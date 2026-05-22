@@ -15,6 +15,7 @@ def launch_setup(context, *args, **kwargs):
     use_sim_time = LaunchConfiguration("use_sim_time")
     database_path = LaunchConfiguration("database_path")
     enable_pointcloud = LaunchConfiguration("enable_pointcloud")
+    enable_mid360 = LaunchConfiguration("enable_mid360")
 
     mode = int(LaunchConfiguration('mode').perform(context))
     localization = LaunchConfiguration('localization').perform(context)
@@ -64,6 +65,7 @@ def launch_setup(context, *args, **kwargs):
                 "procedural_env_seed": procedural_env_seed,
                 "headless": headless,
                 "enable_lidar": enable_lidar,
+                "enable_mid360": enable_mid360,
                 "enable_depth": enable_depth,
                 "enable_color": enable_color,
                 "enable_pointcloud": enable_pointcloud,
@@ -128,6 +130,11 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 'enable_pointcloud', default_value='false',
                 description='Publish RealSense pointcloud (debug; off by default)'
+            ),
+
+            DeclareLaunchArgument(
+                'enable_mid360', default_value='false',
+                description='Publish Mid360 pointcloud (off by default)'
             ),
 
             DeclareLaunchArgument(

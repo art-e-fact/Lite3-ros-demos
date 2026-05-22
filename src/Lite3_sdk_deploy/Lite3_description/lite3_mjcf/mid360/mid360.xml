@@ -1,0 +1,24 @@
+<mujoco model="mid360">
+  <compiler meshdir="assets" fitaabb="true" />
+
+  <default>
+    <default class="mid360">
+      <geom type="mesh" group="2" contype="0" conaffinity="0" mass="0" />
+    </default>
+  </default>
+
+  <asset>
+    <material name="mid360_metal" rgba="0.36 0.36 0.36 1" metallic="0.8" />
+    <material name="mid360_blue_glass" rgba="0.02 0.10 0.85 0.9" specular="0.9" metallic="1"/>
+    <mesh name="mid360_metal_mesh" file="mid360_metal.obj" scale="0.001 0.001 0.001" />
+    <mesh name="mid360_blueglass_mesh" file="mid360_blueglass.obj" scale="0.001 0.001 0.001" />
+  </asset>
+
+  <worldbody>
+    <body name="mid360" childclass="mid360">
+      <geom name="mid360_visual_metal" mesh="mid360_metal_mesh" material="mid360_metal" />
+      <geom name="mid360_visual_blueglass" mesh="mid360_blueglass_mesh" material="mid360_blue_glass" />
+      <site name="lidar_frame" pos="0 0 0" size="0.003 0.003 0.003" rgba="1 0 0 0.35" />
+    </body>
+  </worldbody>
+</mujoco>

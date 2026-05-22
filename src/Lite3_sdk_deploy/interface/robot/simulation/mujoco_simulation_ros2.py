@@ -22,8 +22,9 @@ import numpy as np
 import mujoco
 import mujoco.viewer
 
-from lidar_sensor import LidarSensor, LIDAR_FREQUENCY_HZ
-from depth_sensor import DepthSensor, DEPTH_FREQUENCY_HZ
+from sensors.lidar_sensor import LidarSensor, LIDAR_FREQUENCY_HZ
+from sensors.depth_sensor import DepthSensor, DEPTH_FREQUENCY_HZ
+from sensors.mid360_lidar_sensor import Mid360LidarSensor, MID360_FREQUENCY_HZ
 from procedural_scene_generator import build_procedural_spec
 
 import rclpy
@@ -41,18 +42,27 @@ MODEL_NAME = "Lite3"
 # Get the directory of the current Python file
 CURRENT_DIR = Path(__file__).resolve().parent
 
-# Define the default XML path relative to the Python file
-XML_PATH = CURRENT_DIR / ".." / ".." / ".." / "Lite3_description" / "lite3_mjcf" / "mjcf" / "Lite3_stair.xml"
 
-# Convert to absolute path as string
-XML_PATH = str(XML_PATH.resolve())
+def _resolve_resource_path(*parts: str) -> str:
+    source_root = CURRENT_DIR / ".." / ".." / ".."
+    install_root = CURRENT_DIR / ".." / ".." / "share" / "lite3_sdk_deploy"
+    rel_path = Path(*parts)
+
+    for root in (source_root, install_root):
+        candidate = (root / rel_path).resolve()
+        if candidate.exists():
+            return str(candidate)
+
+    return str((source_root / rel_path).resolve())
+
+# Define the default XML path relative to the Python file
+XML_PATH = _resolve_resource_path("Lite3_description", "lite3_mjcf", "mjcf", "Lite3_stair.xml")
 
 # Robot-only MJCF used when the full scene is generated procedurally in Python.
-LITE3_ROBOT_XML_PATH = CURRENT_DIR / ".." / ".." / ".." / "Lite3_description" / "lite3_mjcf" / "mjcf" / "Lite3.xml"
-LITE3_ROBOT_XML_PATH = str(LITE3_ROBOT_XML_PATH.resolve())
+LITE3_ROBOT_XML_PATH = _resolve_resource_path("Lite3_description", "lite3_mjcf", "mjcf", "Lite3.xml")
 
-D435I_XML_PATH = CURRENT_DIR / ".." / ".." / ".." / "Lite3_description" / "lite3_mjcf" / "realsense_d435i" / "d435i.xml"
-D435I_XML_PATH = str(D435I_XML_PATH.resolve())
+D435I_XML_PATH = _resolve_resource_path("Lite3_description", "lite3_mjcf", "realsense_d435i", "d435i.xml")
+MID360_XML_PATH = _resolve_resource_path("Lite3_description", "lite3_mjcf", "mid360", "mid360.xml")
 
 
 USE_VIEWER = True
@@ -71,7 +81,8 @@ class MuJoCoSimulationNode(Node):
     def __init__(self,
                  model_key: str = MODEL_NAME,
                  xml_path: str = XML_PATH,
-                 d435i_xml_path: str = D435I_XML_PATH):
+                 d435i_xml_path: str = D435I_XML_PATH,
+                 mid360_xml_path: str = MID360_XML_PATH):
 
         super().__init__('mujoco_simulation')
 
@@ -79,6 +90,7 @@ class MuJoCoSimulationNode(Node):
         self.declare_parameter('procedural_env_seed', -1)
         self.declare_parameter('headless', False)
         self.declare_parameter('enable_lidar', False)
+        self.declare_parameter('enable_mid360', False)
         self.declare_parameter('enable_depth', False)
         self.declare_parameter('enable_color', False)
         self.declare_parameter('enable_pointcloud', False)
@@ -86,6 +98,7 @@ class MuJoCoSimulationNode(Node):
         configured_seed = int(self.get_parameter('procedural_env_seed').value)
         headless = bool(self.get_parameter('headless').value)
         enable_lidar = bool(self.get_parameter('enable_lidar').value)
+        enable_mid360 = bool(self.get_parameter('enable_mid360').value)
         enable_depth = bool(self.get_parameter('enable_depth').value)
         enable_color = bool(self.get_parameter('enable_color').value)
         enable_pointcloud = bool(self.get_parameter('enable_pointcloud').value)
@@ -125,6 +138,11 @@ class MuJoCoSimulationNode(Node):
             self.get_logger().info("[INFO] D435i model attached via mjSpec")
         if enable_lidar:
             LidarSensor.configure_spec(spec)
+        if enable_mid360:
+            if not os.path.isfile(mid360_xml_path):
+                raise FileNotFoundError(f"Mid360 XML not found: {mid360_xml_path}")
+            Mid360LidarSensor.configure_spec(spec, mid360_xml_path)
+            self.get_logger().info("[INFO] Mid360 model attached via mjSpec")
 
         self.model = spec.compile()
         self.model.opt.timestep = DT
@@ -192,6 +210,9 @@ class MuJoCoSimulationNode(Node):
         self.lidar = LidarSensor(self.model, self.data, self, self.viewer, enabled=enable_lidar)
         self.lidar_step_interval = int(1.0 / (LIDAR_FREQUENCY_HZ * DT))
 
+        self.mid360 = Mid360LidarSensor(self.model, self.data, self, self.viewer, enabled=enable_mid360)
+        self.mid360_step_interval = int(1.0 / (MID360_FREQUENCY_HZ * DT))
+
         # Depth camera sensor (RealSense D435i)
         self.depth = DepthSensor(
             self.model, self.data, self, self.viewer,
@@ -220,6 +241,7 @@ class MuJoCoSimulationNode(Node):
         stamp = self._make_sim_stamp()
         transforms = []
         transforms.extend(self.lidar.get_static_transforms(stamp))
+        transforms.extend(self.mid360.get_static_transforms(stamp))
         transforms.extend(self.depth.get_static_transforms(stamp))
         if transforms:
             self.static_tf_broadcaster.sendTransform(transforms)
@@ -283,6 +305,7 @@ class MuJoCoSimulationNode(Node):
         odom_msg = Odometry()
         odom_msg.header.stamp = stamp
         odom_msg.header.frame_id = 'odom'
+        # odom_msg.child_frame_id = 'base_footprint' #'base_link'
         odom_msg.child_frame_id = 'base_link'
         odom_msg.pose.pose.position.x = float(pos[0])
         odom_msg.pose.pose.position.y = float(pos[1])
@@ -340,6 +363,9 @@ class MuJoCoSimulationNode(Node):
                 # LiDAR scan
                 if step % self.lidar_step_interval == 0:
                     self.lidar.update(self.timestamp)
+
+                if step % self.mid360_step_interval == 0:
+                    self.mid360.update(self.timestamp)
 
                 # Depth camera
                 if step % self.depth_step_interval == 0:

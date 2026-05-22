@@ -36,5 +36,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-realsense2-camera-msgs \
     && rm -rf /var/lib/apt/lists/*
 
-# Mujoco
-RUN pip install mujoco
+# Python requirements
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt

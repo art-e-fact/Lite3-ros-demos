@@ -152,6 +152,9 @@
       <site name="TORSO_site" pos="0 0 0" quat="1 0 0 0" />
       <!-- D435i attaches here via mjSpec at runtime -->
       <site name="d435i_mount" pos="0.25 0 0.08" quat="0.9848078 0 0.1736482 0" size="0.001 0.001 0.001"/>
+      <!-- Mid360 attaches here via mjSpec at runtime -->
+      <!-- matches with real Lite3, mounted with 22-degree tilt -->
+      <site name="mid360_mount" pos="0.18 0 0.12" quat="0.9816272 0 0.190809 0" size="0.001 0.001 0.001"/>
       <camera name="front_camera" mode="track" fovy="90.0" quat="4.329780281177467e-17 4.329780281177466e-17 0.7071067811865475 0.7071067811865476" pos="0.0 2.0 0.5" />
       <camera name="side_camera" mode="track" fovy="90.0" quat="-0.5 -0.4999999999999999 0.5 0.5000000000000001" pos="-2.0 0.0 0.5" />
     </body>

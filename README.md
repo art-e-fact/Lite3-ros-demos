@@ -231,6 +231,50 @@ ros2 launch lite3_sdk_deploy mujoco_simulation_ros2.launch.py \
   xml:=Lite3_yourscene.xml
 ```
 
+
+## DDDMR for Lite3 with Mid360 lidar (3D Mapping + 3D Navigation)
+
+### 0. Installation
+
+- Current support: ROS Humble
+- Please follow guide at: https://github.com/art-e-fact/dddmr_navigation
+
+### 1. Mapping mode
+
+- Launch:
+```
+ros2 launch lite3_sdk_deploy mujoco_simulation_ros2_dddrm.launch.py mode:=0 xml:=stairs_floors.xml
+```
+
+- (From another terminal) Save local map file:
+```
+ros2 service call /save_mapped_point_cloud std_srvs/srv/Empty
+```
+
+Note: The map will be saved into `/tmp/2026_xxx`, use this path when update navigation config file.
+
+### 2. Navigation mode
+
+- Modify config file: `src/Lite3_sdk_deploy/config/navigation_mid360s.yaml`:
+```
+...
+sub_maps:
+  ros__parameters:
+    pose_graph_dir: "/tmp/2026_xxx" 
+...
+```
+- Launch:
+```
+ros2 launch lite3_sdk_deploy mujoco_simulation_ros2_dddrm.launch.py mode:=1 xml:=stairs_floors.xml
+```
+- In Rviz, click on "3D pose estimate" -> set initial pose, then click on "3D goal pose" -> set target goal for navigation
+
+### Tunable config files:
+
+- `src/Lite3_sdk_deploy/config/mapping_mid360s.yaml`
+- `src/Lite3_sdk_deploy/config/navigation_mid360s.yaml`
+
+
 ---
 
 

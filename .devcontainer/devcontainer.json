@@ -1,6 +1,7 @@
 {
     "name": "ROS 2 Humble",
     "build": {
+        "context": "..",
         "dockerfile": "Dockerfile",
         "options": ["--network=host"]
     },
@@ -18,10 +19,11 @@
         "--volume=/tmp/.X11-unix:/tmp/.X11-unix",
         "--volume=${localEnv:HOME}/.Xauthority:/root/.Xauthority:ro",
         "--volume=${localEnv:XDG_RUNTIME_DIR}:${localEnv:XDG_RUNTIME_DIR}",
+        "--volume=/dev/input:/dev/input",
         "--device=/dev/dri"
     ],
-    // Source ROS on every shell
-    "postCreateCommand": "echo 'source /opt/ros/humble/setup.bash' >> ~/.bashrc",
+    // Source ROS and the workspace overlay (if built) on every shell
+    "postCreateCommand": "echo 'source /opt/ros/humble/setup.bash' >> ~/.bashrc && echo '[ -f /workspaces/sdk_deploy/install/setup.bash ] && source /workspaces/sdk_deploy/install/setup.bash' >> ~/.bashrc",
     
     "customizations": {
         "vscode": {
