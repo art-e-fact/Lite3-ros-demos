@@ -1,0 +1,6 @@
+simulator: mujoco
+use_procedural_scene: true
+sensors:
+  realsense:
+    enable_depth: true
+    enable_color: true

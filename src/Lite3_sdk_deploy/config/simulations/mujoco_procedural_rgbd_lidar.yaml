@@ -1,0 +1,9 @@
+simulator: mujoco
+headless: false
+use_procedural_scene: true
+sensors:
+  lidar_2d:
+    enabled: true
+  realsense:
+    enable_depth: true
+    enable_color: true

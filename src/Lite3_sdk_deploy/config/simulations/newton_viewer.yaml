@@ -1,0 +1,2 @@
+headless: false
+scene: package://lite3_sdk_deploy/Lite3_description/lite3_mjcf/mjcf/stairs_floors.xml

@@ -1,0 +1,2 @@
+simulator: mujoco
+use_procedural_scene: true

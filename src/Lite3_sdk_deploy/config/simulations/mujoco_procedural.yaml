@@ -1,0 +1,3 @@
+simulator: mujoco
+headless: false
+use_procedural_scene: true

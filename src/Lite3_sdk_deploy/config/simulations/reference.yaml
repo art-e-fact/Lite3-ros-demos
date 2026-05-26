@@ -1,0 +1,76 @@
+# Reference only. This file is not loaded by the simulator.
+# Runtime defaults live in interface/robot/simulation/simulation_config.py.
+
+simulator: newton
+
+# Scene XML or MJCF for the environment.
+scene: package://lite3_sdk_deploy/Lite3_description/lite3_mjcf/mjcf/stairs_floors.xml
+
+# Robot description. Newton also supports the USD path below.
+robot_description: package://lite3_sdk_deploy/Lite3_description/lite3_mjcf/mjcf/Lite3.xml
+# robot_description: package://lite3_sdk_deploy/Lite3_description/Lite3_usd/Lite3.usd
+
+# Run without a viewer by default.
+headless: true
+
+# Legacy MuJoCo procedural scene controls.
+use_procedural_scene: false
+procedural_env_seed: -1
+
+sensors:
+  realsense:
+    enable_depth: false
+    enable_color: false
+    enable_pointcloud: false
+    width: 640
+    height: 480
+    frequency_hz: 15.0
+    depth_range_min: 0.105
+    depth_range_max: 10.0
+    depth_fx: 382.68
+    depth_fy: 382.68
+    depth_cx: 320.0
+    depth_cy: 240.0
+    color_fx: 615.69
+    color_fy: 615.69
+    color_cx: 320.0
+    color_cy: 240.0
+    depth_image_topic: /camera/depth/image_rect_raw
+    depth_info_topic: /camera/depth/camera_info
+    color_image_topic: /camera/color/image_raw
+    color_info_topic: /camera/color/camera_info
+    pointcloud_topic: /camera/depth/color/points
+    depth_optical_frame: camera_depth_optical_frame
+    color_optical_frame: camera_color_optical_frame
+    camera_link_frame: camera_link
+    depth_frame: camera_depth_frame
+    color_frame: camera_color_frame
+    mount_site_name: d435i_mount
+    depth_camera_name: d435i-depth
+    color_camera_name: d435i-color
+    forward_offset: [0.01, 0.0, 0.0]
+
+  lidar_2d:
+    enabled: false
+    site_name: lidar_site
+    frame_id: lidar
+    topic: /scan
+    frequency_hz: 10.0
+    num_rays: 360
+    range_min: 0.15
+    range_max: 8.0
+    visualize_rays: false
+
+  mid360:
+    enabled: false
+    mount_site_name: mid360_mount
+    attachment_prefix: mid360-
+    sensor_site_name: lidar_frame
+    frame_id: mid360
+    topic: /mid360/points
+    frequency_hz: 10.0
+    pattern_file: mid360.npy
+    samples_per_scan: 24000
+    range_min: 0.1
+    range_max: 200.0
+    downsample: 1

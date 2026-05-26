@@ -6,17 +6,14 @@ from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
+def _default_simulation_config(package_share: str) -> str:
+    return f"{package_share}/config/simulations/mujoco_procedural.yaml"
+
+
 def launch_setup(context, *args, **kwargs):
-    use_procedural_scene = LaunchConfiguration("use_procedural_scene")
-    procedural_env_seed = LaunchConfiguration("procedural_env_seed")
     headless = LaunchConfiguration("headless")
     use_rviz = LaunchConfiguration("use_rviz")
-
-    enable_lidar = LaunchConfiguration("enable_lidar")
-    enable_mid360 = LaunchConfiguration("enable_mid360")
-    enable_depth = LaunchConfiguration("enable_depth")
-    enable_color = LaunchConfiguration("enable_color")
-    enable_pointcloud = LaunchConfiguration("enable_pointcloud")
+    simulation_config = LaunchConfiguration("simulation_config").perform(context).strip()
 
     use_keyboard_teleop = LaunchConfiguration("use_keyboard_teleop")
     use_joy_teleop = LaunchConfiguration("use_joy_teleop")
@@ -27,22 +24,16 @@ def launch_setup(context, *args, **kwargs):
     rviz_config = PathJoinSubstitution([
         FindPackageShare("lite3_sdk_deploy"), "config", "mapping_lidar.rviz"
     ])
+    package_share = FindPackageShare("lite3_sdk_deploy").perform(context)
+    headless_value = headless.perform(context).strip().lower()
+    selected_config = simulation_config or _default_simulation_config(package_share)
 
     return [
         Node(
             package="lite3_sdk_deploy",
-            executable="mujoco_simulation_ros2.py",
+            executable="start_simulation.py",
             output="screen",
-            parameters=[{
-                "use_procedural_scene": use_procedural_scene,
-                "procedural_env_seed": procedural_env_seed,
-                "headless": headless,
-                "enable_lidar": enable_lidar,
-                "enable_mid360": enable_mid360,
-                "enable_depth": enable_depth,
-                "enable_color": enable_color,
-                "enable_pointcloud": enable_pointcloud,
-            }],
+            arguments=["--config", selected_config, *(["--set", f"headless={headless_value}"] if headless_value in {"true", "false"} else [])],
         ),
 
         Node(
@@ -101,16 +92,9 @@ def launch_setup(context, *args, **kwargs):
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument("use_procedural_scene", default_value="true"),
-        DeclareLaunchArgument("procedural_env_seed", default_value="-1"),
-        DeclareLaunchArgument("headless", default_value="false"),
+        DeclareLaunchArgument("headless", default_value=""),
         DeclareLaunchArgument("use_rviz", default_value="true"),
-
-        DeclareLaunchArgument("enable_lidar", default_value="false"),
-        DeclareLaunchArgument("enable_mid360", default_value="false"),
-        DeclareLaunchArgument("enable_depth", default_value="false"),
-        DeclareLaunchArgument("enable_color", default_value="false"),
-        DeclareLaunchArgument("enable_pointcloud", default_value="false"),
+        DeclareLaunchArgument("simulation_config", default_value=""),
 
         DeclareLaunchArgument(
             "use_keyboard_teleop",

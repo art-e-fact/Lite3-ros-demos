@@ -5,6 +5,24 @@ from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
+import yaml
+
+
+def _mode_simulation_config(package_share: str, mode: int) -> str:
+    if mode == 0:
+        return f"{package_share}/config/simulations/mujoco_lidar.yaml"
+    if mode == 1:
+        return f"{package_share}/config/simulations/mujoco_rgbd.yaml"
+    return f"{package_share}/config/simulations/mujoco_rgbd_lidar.yaml"
+
+
+def _uses_procedural_scene(config_path: str) -> bool:
+    try:
+        with open(config_path, "r", encoding="utf-8") as stream:
+            data = yaml.safe_load(stream) or {}
+    except OSError:
+        return False
+    return bool(data.get("use_procedural_scene", False))
 
 
 def launch_setup(context, *args, **kwargs):
@@ -12,14 +30,10 @@ def launch_setup(context, *args, **kwargs):
     localization = LaunchConfiguration('localization').perform(context)
     localization = localization.lower() == 'true'
     control_type = int(LaunchConfiguration('control_type').perform(context))
+    simulation_config = LaunchConfiguration('simulation_config').perform(context).strip()
     nav2_params_filepath_launch_arg = LaunchConfiguration('nav2_params_filepath')
     use_sim_time = LaunchConfiguration("use_sim_time")
     database_path = LaunchConfiguration("database_path")
-    scene_id = int(LaunchConfiguration('scene_id').perform(context))
-    use_procedural_scene = LaunchConfiguration('use_procedural_scene').perform(context).lower() == 'true'
-    procedural_env_seed = LaunchConfiguration('procedural_env_seed')
-    xml_path = LaunchConfiguration('xml').perform(context).strip()
-    effective_use_procedural_scene = use_procedural_scene or scene_id == 1
 
     nav2_package_share = FindPackageShare("nav2_bringup").perform(context)
     lite3_package_share = FindPackageShare("lite3_sdk_deploy").perform(context)
@@ -37,25 +51,13 @@ def launch_setup(context, *args, **kwargs):
     if mode == 0:
         rtabmap_mode = "lidar"
         rviz_filepath = f"{lite3_package_share}/config/mapping_lidar_costmaps.rviz"
-        enable_lidar = True
-        enable_depth = False
-        enable_color = False
     elif mode == 1:
         rtabmap_mode = "rgbd"
         rviz_filepath = f"{lite3_package_share}/config/mapping_rgbd_costmaps.rviz"
-        enable_lidar = False
-        enable_depth = True
-        enable_color = True
     else:
         rtabmap_mode = "rgbd_lidar"
         rviz_filepath = f"{lite3_package_share}/config/mapping_rgbd_lidar_costmaps.rviz"
-        enable_lidar = True
-        enable_depth = True
-        enable_color = True
 
-
-    enable_pointcloud = LaunchConfiguration('enable_pointcloud').perform(context).lower() == 'true'
-    enable_mid360 = LaunchConfiguration('enable_mid360').perform(context).lower() == 'true'
 
     rtabmap_args = {
         "use_sim_time": use_sim_time,
@@ -73,22 +75,8 @@ def launch_setup(context, *args, **kwargs):
     else:
         rl_deploy_args = ["--gamepad"]
 
-    ## scene
-    mujoco_simulation_ros2_params = {
-        "enable_lidar": enable_lidar,
-        "enable_mid360": enable_mid360,
-        "enable_depth": enable_depth,
-        "enable_color": enable_color,
-        "enable_pointcloud": enable_pointcloud,
-        "use_procedural_scene": effective_use_procedural_scene,
-        "procedural_env_seed": procedural_env_seed,
-    }
-    mujoco_simulation_ros2_args = []
-    if xml_path:
-        xml_path = f"src/Lite3_sdk_deploy/Lite3_description/lite3_mjcf/mjcf/{xml_path}"
-        mujoco_simulation_ros2_args = ["--xml", xml_path]
-
-    if not effective_use_procedural_scene:
+    selected_config = simulation_config or _mode_simulation_config(lite3_package_share, mode)
+    if not _uses_procedural_scene(selected_config):
         rtabmap_args["max_ground_height"] = '0.3'
         rtabmap_args["max_ground_angle"] = '60'
 
@@ -96,10 +84,9 @@ def launch_setup(context, *args, **kwargs):
         # MuJoCo simulation
         Node(
             package='lite3_sdk_deploy', 
-            executable='mujoco_simulation_ros2.py',
+            executable='start_simulation.py',
             output='screen',
-            arguments=mujoco_simulation_ros2_args,
-            parameters = [mujoco_simulation_ros2_params],
+            arguments=['--config', selected_config],
         ),
 
         # RL controller
@@ -145,16 +132,6 @@ def generate_launch_description():
         ),
 
         DeclareLaunchArgument(
-            'enable_pointcloud', default_value='false',
-            description='Publish RealSense pointcloud (debug; off by default)'
-        ),
-
-        DeclareLaunchArgument(
-            'enable_mid360', default_value='false',
-            description='Publish Mid360 pointcloud (off by default)'
-        ),
-
-        DeclareLaunchArgument(
             'localization', default_value='false',
             description='Launch in localization mode.'
         ),
@@ -183,23 +160,8 @@ def generate_launch_description():
         ),
 
         DeclareLaunchArgument(
-            'scene_id', default_value='0',
-            description='Legacy scene selector: 0 (authored/default scene), 1 (procedural scene).'
-        ),
-
-        DeclareLaunchArgument(
-            'use_procedural_scene', default_value='false',
-            description='Generate the MuJoCo environment procedurally at runtime.'
-        ),
-
-        DeclareLaunchArgument(
-            'procedural_env_seed', default_value='-1',
-            description='Seed for procedural scene generation; -1 selects a random seed.'
-        ),
-
-        DeclareLaunchArgument(
-            'xml', default_value='',
-            description='Top-level MuJoCo XML scene file name from src/Lite3_sdk_deploy/Lite3_description/lite3_mjcf/mjcf.'
+            'simulation_config', default_value='',
+            description='Optional simulation YAML. When set, it overrides the built-in preset selection.'
         ),
 
         OpaqueFunction(function=launch_setup)

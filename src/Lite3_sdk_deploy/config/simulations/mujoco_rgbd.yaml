@@ -1,0 +1,6 @@
+simulator: mujoco
+headless: false
+sensors:
+  realsense:
+    enable_depth: true
+    enable_color: true

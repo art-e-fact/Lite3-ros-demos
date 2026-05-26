@@ -13,6 +13,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-venv \
     xauth \
+    mesa-utils \
+    libgl1 \
+    libglvnd0 \
+    libglx0 \
+    libegl1 \
+    libxrandr2 \
+    libxinerama1 \
+    libxcursor1 \
+    libxi6 \
+    libxxf86vm1 \
     && rm -rf /var/lib/apt/lists/*
 
 # ROS packages
@@ -36,6 +46,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-realsense2-camera-msgs \
     && rm -rf /var/lib/apt/lists/*
 
+RUN pip install --upgrade pip setuptools wheel packaging build scikit-build-core
 # Python requirements
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt

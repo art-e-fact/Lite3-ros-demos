@@ -1,6 +1,9 @@
 mujoco
 scipy
 numpy
+pytest
+PyYAML
 empy==3.3.4
 catkin-pkg
 lark
+newton[examples]>=1.2.0

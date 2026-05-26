@@ -7,15 +7,20 @@ from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
+def _mode_simulation_config(package_share: str, mode: int) -> str:
+    if mode == 0:
+        return f"{package_share}/config/simulations/mujoco_procedural_lidar.yaml"
+    if mode == 1:
+        return f"{package_share}/config/simulations/mujoco_procedural_rgbd.yaml"
+    return f"{package_share}/config/simulations/mujoco_procedural_rgbd_lidar.yaml"
+
+
 def launch_setup(context, *args, **kwargs):
-    use_procedural_scene = LaunchConfiguration("use_procedural_scene")
-    procedural_env_seed = LaunchConfiguration("procedural_env_seed")
     headless = LaunchConfiguration("headless")
     use_rviz = LaunchConfiguration("use_rviz")
     use_sim_time = LaunchConfiguration("use_sim_time")
     database_path = LaunchConfiguration("database_path")
-    enable_pointcloud = LaunchConfiguration("enable_pointcloud")
-    enable_mid360 = LaunchConfiguration("enable_mid360")
+    simulation_config = LaunchConfiguration("simulation_config").perform(context).strip()
 
     mode = int(LaunchConfiguration('mode').perform(context))
     localization = LaunchConfiguration('localization').perform(context)
@@ -23,26 +28,19 @@ def launch_setup(context, *args, **kwargs):
     control_type = int(LaunchConfiguration('control_type').perform(context))
 
     package_share = FindPackageShare("lite3_sdk_deploy").perform(context)
+    headless_value = headless.perform(context).strip().lower()
 
     ## rtabmap modes
     if mode == 0:
         rtabmap_mode = "lidar"
         rviz_filepath = f"{package_share}/config/mapping_lidar.rviz"
-        enable_lidar = True
-        enable_depth = False
-        enable_color = False
     elif mode == 1:
         rtabmap_mode = "rgbd"
         rviz_filepath = f"{package_share}/config/mapping_rgbd.rviz"
-        enable_lidar = False
-        enable_depth = True
-        enable_color = True
     else:
         rtabmap_mode = "rgbd_lidar"
         rviz_filepath = f"{package_share}/config/mapping_rgbd_lidar.rviz"
-        enable_lidar = True
-        enable_depth = True
-        enable_color = True
+    selected_config = simulation_config or _mode_simulation_config(package_share, mode)
 
     ## rl_deploy
     rl_deploy_prefix = ''
@@ -58,18 +56,9 @@ def launch_setup(context, *args, **kwargs):
         # MuJoCo simulation
         Node(
             package="lite3_sdk_deploy",
-            executable="mujoco_simulation_ros2.py",
+            executable="start_simulation.py",
             output="screen",
-            parameters=[{
-                "use_procedural_scene": use_procedural_scene,
-                "procedural_env_seed": procedural_env_seed,
-                "headless": headless,
-                "enable_lidar": enable_lidar,
-                "enable_mid360": enable_mid360,
-                "enable_depth": enable_depth,
-                "enable_color": enable_color,
-                "enable_pointcloud": enable_pointcloud,
-            }],
+            arguments=["--config", selected_config, *(["--set", f"headless={headless_value}"] if headless_value in {"true", "false"} else [])],
         ),
 
         # RL controller
@@ -115,26 +104,15 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
-            DeclareLaunchArgument("use_procedural_scene", default_value="true"),
-            DeclareLaunchArgument("procedural_env_seed", default_value="-1"),
-            DeclareLaunchArgument("headless", default_value="false"),
+            DeclareLaunchArgument("headless", default_value=""),
             DeclareLaunchArgument("use_rviz", default_value="true"),
             DeclareLaunchArgument("use_sim_time", default_value="false"),
             DeclareLaunchArgument("database_path", default_value="~/.ros/rtabmap.db"),
+            DeclareLaunchArgument("simulation_config", default_value=""),
 
             DeclareLaunchArgument(
                 'mode', default_value='2',
                 description='RTAB-Map mode: 0 (lidar), 1 (rgbd), 2 (lidar+rgbd)'
-            ),
-
-            DeclareLaunchArgument(
-                'enable_pointcloud', default_value='false',
-                description='Publish RealSense pointcloud (debug; off by default)'
-            ),
-
-            DeclareLaunchArgument(
-                'enable_mid360', default_value='false',
-                description='Publish Mid360 pointcloud (off by default)'
             ),
 
             DeclareLaunchArgument(

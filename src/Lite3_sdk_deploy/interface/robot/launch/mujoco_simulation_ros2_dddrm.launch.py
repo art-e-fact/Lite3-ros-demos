@@ -12,22 +12,17 @@ from ament_index_python.packages import get_package_share_directory
 MAPPING_MODE = 0
 NAVIGATION_MODE = 1
 
+
+def _default_simulation_config(package_share: str) -> str:
+    return f"{package_share}/config/simulations/mujoco_mid360.yaml"
+
 def launch_setup(context, *args, **kwargs):
     mode = int(LaunchConfiguration('mode').perform(context))
     control_type = int(LaunchConfiguration('control_type').perform(context))
-    scene_id = int(LaunchConfiguration('scene_id').perform(context))
-    use_procedural_scene = LaunchConfiguration('use_procedural_scene').perform(context).lower() == 'true'
-    procedural_env_seed = LaunchConfiguration('procedural_env_seed')
-    xml_path = LaunchConfiguration('xml').perform(context).strip()
-    effective_use_procedural_scene = use_procedural_scene or scene_id == 1
-    enable_pointcloud = LaunchConfiguration('enable_pointcloud').perform(context).lower() == 'true'
-    enable_mid360 = LaunchConfiguration("enable_mid360")
+    simulation_config = LaunchConfiguration('simulation_config').perform(context).strip()
 
     lite3_package_share = FindPackageShare("lite3_sdk_deploy").perform(context)
-
-    enable_lidar_2D = False
-    enable_depth = False
-    enable_color = False
+    selected_config = simulation_config or _default_simulation_config(lite3_package_share)
 
     if mode == MAPPING_MODE:
         rtabmap_mode = None
@@ -52,22 +47,6 @@ def launch_setup(context, *args, **kwargs):
         rl_deploy_prefix = 'xterm -e'
     else:
         rl_deploy_args = ["--gamepad"]
-
-    ## scene
-    mujoco_simulation_ros2_params = {
-        "enable_mid360": enable_mid360,
-        "enable_lidar": enable_lidar_2D,
-        "enable_depth": enable_depth,
-        "enable_color": enable_color,
-        "enable_pointcloud": enable_pointcloud,
-        "use_procedural_scene": effective_use_procedural_scene,
-        "procedural_env_seed": procedural_env_seed,
-    }
-    mujoco_simulation_ros2_args = []
-    if xml_path:
-        xml_path = f"src/Lite3_sdk_deploy/Lite3_description/lite3_mjcf/mjcf/{xml_path}"
-        mujoco_simulation_ros2_args = ["--xml", xml_path]
-
 
     return [
         TimerAction(
@@ -146,10 +125,9 @@ def launch_setup(context, *args, **kwargs):
         # MuJoCo simulation
         Node(
             package='lite3_sdk_deploy', 
-            executable='mujoco_simulation_ros2.py',
+            executable='start_simulation.py',
             output='screen',
-            arguments=mujoco_simulation_ros2_args,
-            parameters = [mujoco_simulation_ros2_params],
+            arguments=['--config', selected_config],
         ),
 
         # RL controller
@@ -180,38 +158,13 @@ def generate_launch_description():
         ),
 
         DeclareLaunchArgument(
-            'enable_mid360', default_value='true',
-            description='Publish Mid360 pointcloud (off by default)'
-        ),
-
-        DeclareLaunchArgument(
-            'enable_pointcloud', default_value='false',
-            description='Publish RealSense pointcloud (debug; off by default)'
-        ),
-
-        DeclareLaunchArgument(
             'control_type', default_value='0',
             description='Joints control type: 0 (twist), 1 (keyboard), 2 (gamepad)'
         ),
 
         DeclareLaunchArgument(
-            'scene_id', default_value='0',
-            description='Legacy scene selector: 0 (authored/default scene), 1 (procedural scene).'
-        ),
-
-        DeclareLaunchArgument(
-            'use_procedural_scene', default_value='false',
-            description='Generate the MuJoCo environment procedurally at runtime.'
-        ),
-
-        DeclareLaunchArgument(
-            'procedural_env_seed', default_value='-1',
-            description='Seed for procedural scene generation; -1 selects a random seed.'
-        ),
-
-        DeclareLaunchArgument(
-            'xml', default_value='',
-            description='Top-level MuJoCo XML scene file name from src/Lite3_sdk_deploy/Lite3_description/lite3_mjcf/mjcf.'
+            'simulation_config', default_value='',
+            description='Optional simulation YAML. When set, it overrides the built-in preset selection.'
         ),
 
         OpaqueFunction(function=launch_setup)
