@@ -71,7 +71,7 @@ class LidarSensor:
         self.scan_time = 1.0 / self.config.frequency_hz
         self.time_increment = self.scan_time / max(1, self.config.num_rays - 1)
 
-    def update(self, timestamp: float):
+    def update(self, stamp):
         if not self.enabled:
             return
 
@@ -95,7 +95,7 @@ class LidarSensor:
         )
 
         msg = LaserScan()
-        msg.header.stamp = self.node.get_clock().now().to_msg()
+        msg.header.stamp = stamp
         msg.header.frame_id = self.config.frame_id
         msg.angle_min = -math.pi
         msg.angle_max = math.pi

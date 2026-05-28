@@ -83,7 +83,7 @@ class Mid360LidarSensor:
             f"[INFO] Mid360 LiDAR initialized ({ray_count} rays @ {self.config.frequency_hz} Hz, pattern: {path})"
         )
 
-    def update(self, timestamp: float):
+    def update(self, stamp):
         if not self.enabled:
             return
 
@@ -116,7 +116,7 @@ class Mid360LidarSensor:
             & (self.distances <= self.config.range_max)
         )
         points = (local_dirs[valid] * self.distances[valid, None]).astype(np.float32)
-        self.pub.publish(make_xyz_pointcloud(points, self.node.get_clock().now().to_msg(), self.config.frame_id))
+        self.pub.publish(make_xyz_pointcloud(points, stamp, self.config.frame_id))
 
     def _sample_angles(self) -> np.ndarray:
         start = self._pattern_index

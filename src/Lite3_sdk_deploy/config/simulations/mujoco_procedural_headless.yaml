@@ -1,2 +1,2 @@
 simulator: mujoco
-use_procedural_scene: true
+scene: procedural://blocks

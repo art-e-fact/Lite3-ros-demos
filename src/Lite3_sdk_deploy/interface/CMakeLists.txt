@@ -19,7 +19,13 @@ include_directories(${GAMEPAD_SDK_PATH}/include)
 file(GLOB_RECURSE GAMEPAD_SDK_SRC "${GAMEPAD_SDK_PATH}/src/*.cpp")
 
 add_library(interface STATIC ${USER_COMMAND_SRC} ${GAMEPAD_SDK_SRC})
-target_link_libraries(interface PUBLIC -lpthread -lm -lrt -ldl -lstdc++)
+if(APPLE)
+  # macOS has clock_gettime in libSystem; no librt, no libstdc++ flag needed
+  # (clang's default is libc++ and the ABI is selected by the toolchain).
+  target_link_libraries(interface PUBLIC -lpthread -lm -ldl)
+else()
+  target_link_libraries(interface PUBLIC -lpthread -lm -lrt -ldl -lstdc++)
+endif()
 
 
 

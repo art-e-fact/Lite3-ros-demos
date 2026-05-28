@@ -506,5 +506,6 @@ def build_procedural_spec(
         "node_xy": node_xy,
         "mission_node_idx": mission_node_idx,
         "mission_xy": mission_xy,
+        "robot_start_pose": [float(robot_start_xy[0]), float(robot_start_xy[1]), 0.0],
     }
     return spec, meta

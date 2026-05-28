@@ -32,6 +32,9 @@
 #include "robot_interface.h"
 #include "user_command_interface.h"
 
+#include <chrono>
+#include <thread>
+
 
 union RobotErrorState {
     struct {
@@ -324,6 +327,8 @@ public:
     }
 
     void Run() {
+#ifdef __linux__
+        // Original Linux real-robot / sim path: timerfd + epoll.
         int tfd;    //定时器描述符
         int efd;    //epoll描述符
         int fds;
@@ -362,6 +367,20 @@ public:
                 } else {
                 }
             }
+#else
+        // Portable 1 ms periodic loop for non-Linux dev hosts (macOS).
+        // Linux keeps the original timerfd + epoll implementation above.
+        using clock = std::chrono::steady_clock;
+        const auto period = std::chrono::milliseconds(1);
+        auto next_tick = clock::now() + period;
+        while (start_thread_flag_) {
+            std::this_thread::sleep_until(next_tick);
+            auto now = clock::now();
+            next_tick += period;
+            if (next_tick < now) {
+                next_tick = now + period;
+            }
+#endif
             run_cnt_++;
             current_time_ = GetTimestampMs() / 1000;
             if (!IsDriverStatusNormal()) {

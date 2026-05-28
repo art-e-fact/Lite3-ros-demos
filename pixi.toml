@@ -1,0 +1,57 @@
+[workspace]
+authors = ["Andras Polgar <andras@artefacts.com>"]
+channels = ["https://prefix.dev/robostack-jazzy", "https://prefix.dev/conda-forge"]
+name = "lite3-workspace"
+platforms = ["linux-64", "osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+build = {cmd = "colcon build --symlink-install", inputs = ["src"]}
+
+[dependencies]
+ros-jazzy-ros2run = ">=0.32.8,<0.33"
+ros-jazzy-rclcpp = "*"
+ros-jazzy-ament-cmake = "*"
+ros-jazzy-rosidl-default-generators = "*"
+ros-jazzy-rosidl-default-runtime = "*"
+ros-jazzy-geometry-msgs = ">=5.3.6,<6"
+colcon-common-extensions = ">=0.3.0,<0.4"
+compilers = ">=1.11.0,<2"
+pkg-config = ">=0.29.2,<0.30"
+cmake = "<4"
+ros-jazzy-ament-cmake-auto = ">=2.5.5,<3"
+ninja = ">=1.13.2,<2"
+sysroot_linux-64 = ">=2.39"
+scipy = ">=1.17.1,<2"
+ros-jazzy-launch-testing = ">=3.4.10,<4"
+ros-jazzy-launch-testing-ros = ">=0.26.11,<0.27"
+ros-jazzy-launch-testing-ament-cmake = ">=3.4.10,<4"
+pytest = ">=9.0.3,<10"
+ros-jazzy-nav-msgs = ">=5.3.6,<6"
+ros-jazzy-sensor-msgs = ">=5.3.6,<6"
+ros-jazzy-tf2-ros = ">=0.36.19,<0.37"
+imageio = ">=2.37.0,<3"
+imageio-ffmpeg = ">=0.6.0,<0.7"
+pyglm = ">=2.8.3,<3"
+ros-jazzy-tf2-ros-py = ">=0.36.19,<0.37"
+trimesh = ">=4.12.2,<5"
+ros-jazzy-ros2launch = ">=0.26.11,<0.27"
+ros-jazzy-grid-map-msgs = ">=2.2.2,<3"
+ros-jazzy-visualization-msgs = ">=5.3.6,<6"
+ros-jazzy-sensor-msgs-py = ">=5.3.6,<6"
+ros-jazzy-rviz2 = ">=14.1.19,<15"
+ros-jazzy-ros2topic = ">=0.32.8,<0.33"
+ros-jazzy-grid-map-rviz-plugin = ">=2.2.2,<3"
+onnxruntime-cpp = ">=1.22.0,<2"
+ros-jazzy-joy = ">=3.3.0,<4"
+ros-jazzy-teleop-twist-joy = ">=2.6.5,<3"
+ros-jazzy-laser-geometry = ">=2.7.2,<3"
+ros-jazzy-image-geometry = ">=4.1.0,<5"
+
+[activation]
+scripts = ["install/setup.sh"]
+
+[pypi-dependencies]
+artefacts-toolkit = ">=1.0.0, <2"
+perlin-noise = ">=1.14, <2"
+mujoco = ">=3.8.1, <4"

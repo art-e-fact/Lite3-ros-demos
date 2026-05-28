@@ -10,7 +10,7 @@ __pycache__/
 !.pixi/config.toml
 
 venv/
-
+MUJOCO_LOG.TXT
 src/Lite3_sdk_deploy/Lite3_description/lite3_mjcf/meshes/warehouse/*
 src/Lite3_sdk_deploy/Lite3_description/lite3_mjcf/mjcf/warehouse.xml
 src/Lite3_sdk_deploy/Lite3_description/lite3_mjcf/mjcf/Lite3_warehouse.xml

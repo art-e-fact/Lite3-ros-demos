@@ -29,6 +29,8 @@ colcon build --symlink-install --cmake-args -DBUILD_PLATFORM=x86
 source install/setup.bash
 ```
 
+Run `colcon build` from a shell with ROS sourced but without the simulation venv activated.
+
 ### Python venv (for simulation only)
 
 The MuJoCo simulation requires Python packages not available via rosdep. Set up a venv once:
@@ -41,6 +43,8 @@ pip install -r requirements.txt
 ```
 
 Activate the venv before running simulation commands.
+
+Inside the devcontainer, the first post-create setup creates this `venv/` automatically and marks it with `COLCON_IGNORE` so ROS builds do not traverse it.
 
 
 ## RTAB-Map SLAM + Nav2 Autonomous Navigation
@@ -120,6 +124,55 @@ ros2 launch lite3_sdk_deploy mujoco_simulation_ros2.launch.py mode:=2 control_ty
 
 This launches MuJoCo, the RL twist controller, Nav2, RTAB-Map, and RViz together. The controller automatically stands the robot up and enters RL mode after ~5 seconds.
 
+### Autonomous Rail Target Following
+
+To launch the full railroad-following stack in one command (MuJoCo + local heightmap + rail detector + rail target follower + RL twist controller + RViz), use:
+
+```bash
+source install/setup.bash
+source venv/bin/activate
+ros2 launch lite3_sdk_deploy sim_rail_target_follow.launch.py
+```
+
+This launch file defaults to the railroad scene with Mid360 enabled, local heightmap enabled, and `procedural_env_seed:=123`.
+
+Useful tuning arguments:
+- `follow_distance`: stop distance to keep from the detected target. Default: `1.5`
+- `max_linear_x`: max forward speed. Default: `0.35`
+- `max_linear_y`: max lateral centering speed. Default: `0.2`
+- `max_angular_z`: max yaw-rate command. Default: `0.5`
+
+Example with custom follow distance and speed limits:
+
+```bash
+ros2 launch lite3_sdk_deploy sim_rail_target_follow.launch.py \
+  follow_distance:=2.0 \
+  max_linear_x:=0.25 \
+  max_linear_y:=0.15 \
+  max_angular_z:=0.4
+```
+
+Record a headless follow-camera video while the stack runs:
+
+```bash
+ros2 launch lite3_sdk_deploy sim_rail_target_follow.launch.py \
+  headless:=true \
+  enable_follow_camera:=true \
+  follow_camera_video_path:=/tmp/lite3_rail_follow.mp4
+```
+
+#### Running tests
+```bash
+# Run with Artefacts CLI
+artefacts run rail_target_follow
+
+# Run with pytest
+pytest -s src/Lite3_sdk_deploy/test/test_sim_rail_target_follow_distance.py
+```
+
+The recorder is disabled by default and writes MP4 files through the simulation venv's `imageio` and `imageio-ffmpeg` packages.
+
+The follower publishes to `/cmd_vel` and will stop if the rail line is invalid, the target is not detected, or the target is already within the configured follow distance.
 
 ### Manual Velocity Commands
 
@@ -344,5 +397,3 @@ See the [Contributors](Contributors.md) page for a list of contributors.
 M20 SDK部署流程请查看[M20 SDK部署说明](/src/M20_sdk_deploy/README.md)。
 ## 贡献者
 请参阅[贡献者](Contributors.md)页面查看贡献者列表。
-
-

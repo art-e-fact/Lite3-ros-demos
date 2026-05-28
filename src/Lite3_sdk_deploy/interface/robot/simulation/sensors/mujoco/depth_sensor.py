@@ -145,10 +145,9 @@ class DepthSensor:
             f"enabled: {', '.join(enabled) or 'none'})"
         )
 
-    def update(self, timestamp: float):
+    def update(self, stamp):
         if not self.enabled:
             return
-        stamp = self.node.get_clock().now().to_msg()
         depth_m = None
 
         if self.enable_depth:

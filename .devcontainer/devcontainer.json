@@ -29,7 +29,7 @@
         "--device=/dev/dri"
     ],
     // Source ROS and the workspace overlay (if built) on every shell
-    "postCreateCommand": "echo 'source /opt/ros/humble/setup.bash' >> ~/.bashrc && echo '[ -f /workspaces/sdk_deploy/install/setup.bash ] && source /workspaces/sdk_deploy/install/setup.bash' >> ~/.bashrc",
+    "postCreateCommand": "bash /workspaces/sdk_deploy/.devcontainer/post-create.sh",
     
     "customizations": {
         "vscode": {

@@ -248,7 +248,11 @@ public:
     }
 
     double getCurrentTime() {
+#ifdef __linux__
         clock_gettime(1, &system_time);
+#else
+        clock_gettime(CLOCK_MONOTONIC, &system_time);
+#endif
         return system_time.tv_sec + system_time.tv_nsec / 1e9;
     }
 };

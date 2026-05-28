@@ -21,6 +21,8 @@ PACKAGE_NAME = "lite3_sdk_deploy"
 DEFAULT_SCENE_URI = "package://lite3_sdk_deploy/Lite3_description/lite3_mjcf/mjcf/stairs_floors.xml"
 DEFAULT_ROBOT_DESCRIPTION_URI = "package://lite3_sdk_deploy/Lite3_description/lite3_mjcf/mjcf/Lite3.xml"
 DEFAULT_USD_URI = "package://lite3_sdk_deploy/Lite3_description/Lite3_usd/Lite3.usd"
+PROCEDURAL_SCENE_PREFIX = "procedural://"
+SUPPORTED_PROCEDURAL_SCENES = {"blocks", "railroad"}
 
 
 @dataclass
@@ -95,10 +97,26 @@ class Mid360Config:
 
 
 @dataclass
+class FollowCameraConfig:
+	enabled: bool = False
+	video_path: str = ""
+	fps: float = 20.0
+	width: int = 640
+	height: int = 480
+	distance_m: float = 4.0
+	elevation_deg: float = -18.0
+	azimuth_offset_deg: float = 60.0
+	target_height_m: float = 0.55
+	smoothing: float = 0.08
+	quality: int = 8
+
+
+@dataclass
 class SensorsConfig:
 	realsense: RealsenseConfig = field(default_factory=RealsenseConfig)
 	lidar_2d: Lidar2DConfig = field(default_factory=Lidar2DConfig)
 	mid360: Mid360Config = field(default_factory=Mid360Config)
+	follow_camera: FollowCameraConfig = field(default_factory=FollowCameraConfig)
 
 
 @dataclass
@@ -107,7 +125,6 @@ class SimulationConfig:
 	scene: str = DEFAULT_SCENE_URI
 	robot_description: str = DEFAULT_ROBOT_DESCRIPTION_URI
 	headless: bool = True
-	use_procedural_scene: bool = False
 	procedural_env_seed: int = -1
 	sensors: SensorsConfig = field(default_factory=SensorsConfig)
 
@@ -128,10 +145,19 @@ class SimulationConfig:
 		return self.from_dict(data)
 
 	def resolved_scene(self) -> str | None:
+		if self.procedural_scene_name() is not None:
+			return None
 		raw = str(self.scene).strip()
 		if not raw:
 			return None
 		return str(resolve_path(raw))
+
+	def procedural_scene_name(self) -> str | None:
+		raw = str(self.scene).strip()
+		if not raw.lower().startswith(PROCEDURAL_SCENE_PREFIX):
+			return None
+		name = raw[len(PROCEDURAL_SCENE_PREFIX):].strip().lower()
+		return name or None
 
 	def resolved_robot_description(self) -> str:
 		return str(resolve_path(self.robot_description))
@@ -143,7 +169,16 @@ class SimulationConfig:
 			errors.append("simulator must be 'newton' or 'mujoco'")
 
 		scene_value = str(self.scene).strip()
-		scene_path = resolve_path(scene_value, must_exist=False) if scene_value else None
+		procedural_scene = self.procedural_scene_name()
+		scene_path = None
+		if procedural_scene is not None:
+			if simulator != "mujoco":
+				errors.append("procedural scenes are only supported by the MuJoCo simulator")
+			if procedural_scene not in SUPPORTED_PROCEDURAL_SCENES:
+				supported = ", ".join(f"{PROCEDURAL_SCENE_PREFIX}{name}" for name in sorted(SUPPORTED_PROCEDURAL_SCENES))
+				errors.append(f"scene must be an MJCF/XML file or one of: {supported}")
+		elif scene_value:
+			scene_path = resolve_path(scene_value, must_exist=False)
 		robot_path = resolve_path(self.robot_description, must_exist=False)
 		if scene_path is not None and scene_path.suffix.lower() not in {".xml", ".mjcf"}:
 			errors.append("scene must be an MJCF/XML file")
@@ -170,6 +205,17 @@ class SimulationConfig:
 		_validate_positive(errors, "sensors.mid360.samples_per_scan", sensors.mid360.samples_per_scan)
 		_validate_positive(errors, "sensors.mid360.downsample", sensors.mid360.downsample)
 		_validate_range(errors, "sensors.mid360", sensors.mid360.range_min, sensors.mid360.range_max)
+		if sensors.follow_camera.enabled and simulator != "mujoco":
+			errors.append("sensors.follow_camera is only supported by the MuJoCo simulator")
+		if sensors.follow_camera.enabled and not str(sensors.follow_camera.video_path).strip():
+			errors.append("sensors.follow_camera.video_path must be set when follow camera recording is enabled")
+		_validate_positive(errors, "sensors.follow_camera.fps", sensors.follow_camera.fps)
+		_validate_positive(errors, "sensors.follow_camera.width", sensors.follow_camera.width)
+		_validate_positive(errors, "sensors.follow_camera.height", sensors.follow_camera.height)
+		_validate_positive(errors, "sensors.follow_camera.distance_m", sensors.follow_camera.distance_m)
+		_validate_positive(errors, "sensors.follow_camera.target_height_m", sensors.follow_camera.target_height_m)
+		_validate_positive(errors, "sensors.follow_camera.quality", sensors.follow_camera.quality)
+		_validate_unit_interval(errors, "sensors.follow_camera.smoothing", sensors.follow_camera.smoothing)
 		return errors
 
 def candidate_package_roots() -> list[Path]:
@@ -306,3 +352,8 @@ def _validate_range(errors: list[str], name: str, min_value: float, max_value: f
 		errors.append(f"{name}_range_min must be non-negative")
 	if max_value <= min_value:
 		errors.append(f"{name}_range_max must be greater than range_min")
+
+
+def _validate_unit_interval(errors: list[str], name: str, value: float):
+	if value < 0.0 or value > 1.0:
+		errors.append(f"{name} must be between 0.0 and 1.0")

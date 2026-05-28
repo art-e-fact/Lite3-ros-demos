@@ -1,0 +1,26 @@
+project: artefacts/lite3-sdk-deploy
+version: 0.1.0
+
+jobs:
+  rail_target_follow:
+    type: test
+    timeout: 15 # minutes
+    package:
+      docker:
+        build:
+          dockerfile: empty
+    runtime:
+      framework: other
+      simulator: mujoco
+      
+    scenarios:
+      defaults:
+        params:
+          headless: "true"
+          min_distance_to_travel: "7.5"
+          mid360_mount_pitch: ["0.0", "29.0", "30.0"]
+          mid360_mount_offset_x: "0.0"
+      settings:
+        - name: test_sim_rail_target_follow_distance
+          pytest_file: "src/Lite3_sdk_deploy/test/test_sim_rail_target_follow_distance.py"
+          

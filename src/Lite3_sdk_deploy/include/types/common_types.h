@@ -13,8 +13,10 @@
 #include <algorithm>
 #include <sstream>
 #include <fstream>
+#ifdef __linux__
 #include <sys/timerfd.h>
 #include <sys/epoll.h>
+#endif
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/stat.h>

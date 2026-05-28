@@ -10,6 +10,26 @@ add_compile_options(-fPIC)
 
 # ROS2 dependencies
 find_package(ament_cmake REQUIRED)
+
+# lite3_transfer is a Linux-only bridge to the real Lite3 robot:
+#   * uses <sys/timerfd.h> (Linux-only API)
+#   * links against libdeeprobotics_legged_sdk_{x86_64,aarch64}.so (Linux ELF)
+# On macOS / other non-Linux hosts we skip the build entirely so colcon can
+# still process the workspace for the Python MuJoCo simulator and tests.
+# Override with -DBUILD_LITE3_TRANSFER=ON to force-attempt.
+option(BUILD_LITE3_TRANSFER "Build the lite3_transfer hardware bridge" OFF)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set(BUILD_LITE3_TRANSFER ON)
+endif()
+
+if(NOT BUILD_LITE3_TRANSFER)
+  message(STATUS
+    "lite3_transfer: skipping native build on ${CMAKE_SYSTEM_NAME} "
+    "(Linux-only hardware bridge). Pass -DBUILD_LITE3_TRANSFER=ON to override.")
+  ament_package()
+  return()
+endif()
+
 find_package(rclcpp REQUIRED)
 find_package(drdds REQUIRED)
 

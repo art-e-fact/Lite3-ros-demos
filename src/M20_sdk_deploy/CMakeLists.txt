@@ -24,6 +24,25 @@ endif()
 
 # 查找依赖包
 find_package(ament_cmake REQUIRED)
+
+# M20_sdk_deploy is currently Linux-only: links libonnxruntime.so (Linux ELF
+# shipped only for x86_64/aarch64), libevdev (Linux), and -lrt. On macOS we
+# skip the build so colcon can still process the workspace for sibling
+# packages (lite3_sdk_deploy Python sim, etc).
+# Override with -DBUILD_M20_NATIVE=ON to force-attempt the native build.
+option(BUILD_M20_NATIVE "Build the native M20 rl_deploy executable" OFF)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set(BUILD_M20_NATIVE ON)
+endif()
+
+if(NOT BUILD_M20_NATIVE)
+  message(STATUS
+    "m20_sdk_deploy: skipping native build on ${CMAKE_SYSTEM_NAME}. "
+    "Pass -DBUILD_M20_NATIVE=ON to override.")
+  ament_package()
+  return()
+endif()
+
 find_package(rclcpp REQUIRED)
 find_package(drdds REQUIRED)
 
