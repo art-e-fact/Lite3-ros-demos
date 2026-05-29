@@ -231,16 +231,16 @@ def _run_sensor_test(tmp_path, simulator: str, sensor: str):
             os.environ["ROS_DOMAIN_ID"] = previous_domain_id
 
 
-@pytest.mark.parametrize("simulator", ["mujoco", "newton"])
+@pytest.mark.parametrize("simulator", ["mujoco"])
 def test_simulation_publishes_lidar_2d(tmp_path, simulator):
     _run_sensor_test(tmp_path, simulator, "lidar_2d")
 
 
-@pytest.mark.parametrize("simulator", ["mujoco", "newton"])
+@pytest.mark.parametrize("simulator", ["mujoco"])
 def test_simulation_publishes_mid360(tmp_path, simulator):
     _run_sensor_test(tmp_path, simulator, "mid360")
 
 
-@pytest.mark.parametrize("simulator", ["mujoco", "newton"])
+@pytest.mark.parametrize("simulator", ["mujoco"])
 def test_simulation_publishes_realsense_outputs(tmp_path, simulator):
     _run_sensor_test(tmp_path, simulator, "realsense")

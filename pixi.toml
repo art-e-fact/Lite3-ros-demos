@@ -7,6 +7,8 @@ version = "0.1.0"
 
 [tasks]
 build = {cmd = "colcon build --symlink-install", inputs = ["src"]}
+test-sim-sensors = "pytest src/Lite3_sdk_deploy/test/test_simulation_sensors.py -vv -s"
+test-rail-follow = "pytest src/Lite3_sdk_deploy/test/test_sim_rail_target_follow_distance.py -vv -s"
 
 [dependencies]
 ros-jazzy-ros2run = ">=0.32.8,<0.33"
@@ -42,7 +44,7 @@ ros-jazzy-sensor-msgs-py = ">=5.3.6,<6"
 ros-jazzy-rviz2 = ">=14.1.19,<15"
 ros-jazzy-ros2topic = ">=0.32.8,<0.33"
 ros-jazzy-grid-map-rviz-plugin = ">=2.2.2,<3"
-onnxruntime-cpp = ">=1.22.0,<2"
+onnxruntime-cpp = ">=1.26.0,<2"
 ros-jazzy-joy = ">=3.3.0,<4"
 ros-jazzy-teleop-twist-joy = ">=2.6.5,<3"
 ros-jazzy-laser-geometry = ">=2.7.2,<3"
