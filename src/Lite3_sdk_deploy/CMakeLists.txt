@@ -74,8 +74,8 @@ else()
   set(CMAKE_EXE_LINKER_FLAGS "-Wl,--enable-new-dtags")
   set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
   set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+  # Prioritize system/pixi libraries over bundled ones
   set(CMAKE_INSTALL_RPATH
-    ${THIRD_PARTY}/onnxruntime/${BUILD_PLATFORM}/lib/
     ../lib/onnxruntime/
   )
 endif()
@@ -112,8 +112,32 @@ if(APPLE)
   # for ORT >= 1.18 and work with newer dylibs, so we keep them on the
   # include path (set above).
 else()
-  set_target_properties(onnxruntime PROPERTIES IMPORTED_LOCATION
-    "${THIRD_PARTY}/onnxruntime//${BUILD_PLATFORM}/lib/libonnxruntime.so")
+  # On Linux, check multiple paths for libonnxruntime
+  set(ONNXRUNTIME_LIB "")
+  
+  # Try pixi environment first
+  if(DEFINED ENV{PIXI_PROJECT_ROOT})
+    set(PIXI_LIB "$ENV{PIXI_PROJECT_ROOT}/.pixi/envs/default/lib/libonnxruntime.so.1")
+    if(EXISTS "${PIXI_LIB}")
+      set(ONNXRUNTIME_LIB "${PIXI_LIB}")
+    endif()
+  endif()
+  
+  # Try conda environment
+  if(NOT ONNXRUNTIME_LIB AND DEFINED ENV{CONDA_PREFIX})
+    set(CONDA_LIB "$ENV{CONDA_PREFIX}/lib/libonnxruntime.so.1")
+    if(EXISTS "${CONDA_LIB}")
+      set(ONNXRUNTIME_LIB "${CONDA_LIB}")
+    endif()
+  endif()
+  
+  # Fall back to bundled library
+  if(NOT ONNXRUNTIME_LIB)
+    set(ONNXRUNTIME_LIB "${THIRD_PARTY}/onnxruntime/${BUILD_PLATFORM}/lib/libonnxruntime.so")
+  endif()
+  
+  message(STATUS "Using Linux onnxruntime: ${ONNXRUNTIME_LIB}")
+  set_target_properties(onnxruntime PROPERTIES IMPORTED_LOCATION "${ONNXRUNTIME_LIB}")
 endif()
 
 ament_target_dependencies(rl_deploy

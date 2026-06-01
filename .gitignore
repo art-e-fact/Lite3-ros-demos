@@ -1,6 +1,7 @@
 build/
 install/
 log/
+rosbuild/
 .vscode/
 __pycache__/
 *.pyc
