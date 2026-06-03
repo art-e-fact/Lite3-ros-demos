@@ -9,22 +9,44 @@ platforms = ["linux-64", "osx-arm64"]
 version = "0.1.0"
 
 [tasks]
-build-nav = { cmd = "colcon build --symlink-install --build-base rosbuild/nav/build --install-base rosbuild/nav/install --test-result-base rosbuild/nav/test_results --packages-skip simulation_package", inputs = [
-    "src",
-], default-environment = "nav" }
-build-sim = { cmd = "colcon build --build-base rosbuild/sim/build --install-base rosbuild/sim/install --test-result-base rosbuild/sim/simulation_package --packages-select simulation_package --packages-select drdds", inputs = [
-    "src/simulation_package",
-], default-environment = "sim" }
 build = [{ task = "build-nav" }, { task = "build-sim" }]
 
-test-sim-sensors = { cmd = "pytest src/simulation_package/test/test_simulation_sensors.py -vv -s", default-environment = "sim" }
-test-rail-follow = { cmd = "pytest src/rail_inspector/test/test_sim_rail_target_follow_distance.py -vv -s", default-environment = "nav-test" }
+[tasks.build-nav]
+cmd = "colcon build --symlink-install --build-base rosbuild/nav/build --install-base rosbuild/nav/install --test-result-base rosbuild/nav/test_results --packages-skip simulation_package"
+inputs = ["src"]
+default-environment = "nav"
+
+[tasks.build-sim]
+cmd = "colcon build --build-base rosbuild/sim/build --install-base rosbuild/sim/install --test-result-base rosbuild/sim/test_results --packages-select simulation_package drdds"
+inputs = ["src/simulation_package", "src/drdds"]
+default-environment = "sim"
+
+
+
+[tasks.test-sim-sensors]
+cmd = "pytest src/simulation_package/test/test_simulation_sensors.py -vv -s"
+default-environment = "sim-test"
+
+[tasks.test-rail-follow]
+cmd = "pytest src/rail_inspector/test/test_sim_rail_target_follow_distance.py -vv -s"
+default-environment = "nav-test"
+
+[tasks.sim-rail-follow]
+cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/mujoco_procedural_railroad.yaml"
+default-environment = "sim"
+
+[tasks.nav-rail-follow]
+cmd = "ros2 launch rail_inspector rail_target_follow.launch.py enable_heightmap:=true cloud_topic:=/mid360/points follow_distance:=1.5 min_linear_x:=0.35 max_linear_x:=0.45 stale_timeout_sec:=0.75"
+default-environment = "nav"
 
 [feature.sim]
 channels = [
     "https://prefix.dev/robostack-kilted",
     "https://prefix.dev/conda-forge",
 ]
+
+[feature.sim.activation]
+scripts = ["rosbuild/sim/install/setup.sh"]
 
 [feature.sim.dependencies]
 newton-examples = ">=1.2.0,<2"
@@ -56,6 +78,9 @@ channels = [
     "https://prefix.dev/robostack-jazzy",
     "https://prefix.dev/conda-forge",
 ]
+
+[feature.nav.activation]
+scripts = ["rosbuild/nav/install/setup.sh"]
 
 [feature.nav.dependencies]
 ros-jazzy-ros2run = ">=0.32.8,<0.33"
@@ -99,12 +124,17 @@ artefacts-toolkit = ">=1.0.0, <2"
 pytest = ">=9.0.3,<10"
 pyyaml = ">=6.0.3,<7"
 
+[feature.artefacts.pypi-dependencies]
+artefacts-cli = "*"
 
-[activation]
-scripts = ["rosbuild/nav/install/setup.sh"]
+[feature.artefacts.dependencies]
+python = ">=3.14.5,<3.15"
+
 
 [environments]
-sim = ["sim", "test"]
-nav = ["nav"]
 test = ["test"]
+sim = ["sim"]
+sim-test = ["sim", "test"]
+nav = ["nav"]
 nav-test = ["nav", "test"]
+artefacts = ["artefacts"]

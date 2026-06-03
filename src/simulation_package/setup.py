@@ -18,18 +18,21 @@ def _data_files(source_dir: str, install_dir: str) -> list[tuple[str, list[str]]
             continue
         relative_parent = path.parent.relative_to(source_root)
         destination = Path(install_dir) / relative_parent
-        collected.append((str(destination), [str(path)]))
+        collected.append((str(destination), [str(path.relative_to(package_root))]))
     return collected
 
 setup(
     name=package_name,
     version='0.0.0',
     packages=find_packages(exclude=['test']),
+    package_data={
+        'simulation_package.sensors': ['*.npy'],
+    },
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-    ] + _data_files('launch', 'share/' + package_name + '/launch') + _data_files('assets', 'share/' + package_name + '/assets'),
+    ] + _data_files('launch', 'share/' + package_name + '/launch') + _data_files('assets', 'share/' + package_name + '/assets') + _data_files('config', 'share/' + package_name + '/config'),
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='azazdeaz',

@@ -1,4 +1,4 @@
-project: artefacts/lite3-sdk-deploy
+project: artefacts/lite3-ros-demos
 version: 0.1.0
 
 jobs:
@@ -22,5 +22,21 @@ jobs:
           mid360_mount_offset_x: "0.0"
       settings:
         - name: test_sim_rail_target_follow_distance
-          pytest_file: "src/rail_inspector/test/test_sim_rail_target_follow_distance.py"
+          run: "pixi run -e nav-test test-rail-follow"
+  
+  simulated_sensors:
+    type: test
+    timeout: 5 # minutes
+    package:
+      docker:
+        build:
+          dockerfile: empty
+    runtime:
+      framework: other
+      simulator: mujoco
+      
+    scenarios:
+      settings:
+        - name: simulated_sensors_publishing_sensor_data
+          run: "pixi run -e sim-test test-sim-sensors"
           
