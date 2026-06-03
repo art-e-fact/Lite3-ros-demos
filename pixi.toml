@@ -9,7 +9,7 @@ platforms = ["linux-64", "osx-arm64"]
 version = "0.1.0"
 
 [tasks]
-build-nav = { cmd = "colcon build --symlink-install --build-base rosbuild/nav/build --install-base rosbuild/nav/install --test-result-base rosbuild/nav/test_results --packages-skip lite3_sdk_deploy", inputs = [
+build-nav = { cmd = "colcon build --symlink-install --build-base rosbuild/nav/build --install-base rosbuild/nav/install --test-result-base rosbuild/nav/test_results --packages-skip simulation_package", inputs = [
     "src",
 ], default-environment = "nav" }
 build-sim = { cmd = "colcon build --build-base rosbuild/sim/build --install-base rosbuild/sim/install --test-result-base rosbuild/sim/simulation_package --packages-select simulation_package --packages-select drdds", inputs = [
@@ -17,8 +17,8 @@ build-sim = { cmd = "colcon build --build-base rosbuild/sim/build --install-base
 ], default-environment = "sim" }
 build = [{ task = "build-nav" }, { task = "build-sim" }]
 
-test-sim-sensors = "pytest src/Lite3_sdk_deploy/test/test_simulation_sensors.py -vv -s"
-test-rail-follow = "pytest src/Lite3_sdk_deploy/test/test_sim_rail_target_follow_distance.py -vv -s"
+test-sim-sensors = { cmd = "pytest src/simulation_package/test/test_simulation_sensors.py -vv -s", default-environment = "sim" }
+test-rail-follow = { cmd = "pytest src/rail_inspector/test/test_sim_rail_target_follow_distance.py -vv -s", default-environment = "nav-test" }
 
 [feature.sim]
 channels = [
@@ -42,6 +42,14 @@ ros-kilted-rclcpp = ">=29.5.7,<30"
 ros-kilted-geometry-msgs = ">=5.5.2,<6"
 ros-kilted-visualization-msgs = ">=5.5.2,<6"
 ros-kilted-sensor-msgs-py = ">=5.5.2,<6"
+ros-kilted-rosidl-default-generators = ">=1.7.2,<2"
+ros-kilted-nav-msgs = ">=5.5.2,<6"
+ros-kilted-sensor-msgs = ">=5.5.2,<6"
+ros-kilted-tf2-ros = ">=0.41.6,<0.42"
+ros-kilted-tf2-ros-py = ">=0.41.6,<0.42"
+
+[feature.sim.pypi-dependencies]
+perlin-noise = ">=1.14, <2"
 
 [feature.nav]
 channels = [
@@ -84,10 +92,19 @@ ros-jazzy-teleop-twist-joy = ">=2.6.5,<3"
 ros-jazzy-laser-geometry = ">=2.7.2,<3"
 ros-jazzy-image-geometry = ">=4.1.0,<5"
 
+[feature.test.pypi-dependencies]
+artefacts-toolkit = ">=1.0.0, <2"
+
+[feature.test.dependencies]
+pytest = ">=9.0.3,<10"
+pyyaml = ">=6.0.3,<7"
+
 
 [activation]
 scripts = ["rosbuild/nav/install/setup.sh"]
 
 [environments]
-sim = ["sim"]
+sim = ["sim", "test"]
 nav = ["nav"]
+test = ["test"]
+nav-test = ["nav", "test"]

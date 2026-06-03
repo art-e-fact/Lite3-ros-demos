@@ -189,9 +189,9 @@ else()
 endif()
 
 set(LITE3_PYTHON_ENTRYPOINTS
-  interface/robot/simulation/start_simulation.py
-  interface/robot/simulation/mujoco_simulation_ros2.py
-  interface/robot/simulation/auto_waypoint_navigator.py
+  # interface/robot/simulation/start_simulation.py
+  # interface/robot/simulation/mujoco_simulation_ros2.py
+  # interface/robot/simulation/auto_waypoint_navigator.py
 )
 
 foreach(entrypoint IN LISTS LITE3_PYTHON_ENTRYPOINTS)
@@ -205,26 +205,26 @@ endforeach()
 
 # Install Python simulation scripts (runnable via: ros2 run lite3_sdk_deploy mujoco_simulation_ros2.py)
 install(PROGRAMS
-  interface/robot/simulation/start_simulation.py
-  interface/robot/simulation/mujoco_simulation_ros2.py
-  interface/robot/simulation/auto_waypoint_navigator.py
+  # interface/robot/simulation/start_simulation.py
+  # interface/robot/simulation/mujoco_simulation_ros2.py
+  # interface/robot/simulation/auto_waypoint_navigator.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
 install(DIRECTORY
-  interface/robot/simulation/scenes
-  interface/robot/simulation/sensors
+  # interface/robot/simulation/scenes
+  # interface/robot/simulation/sensors
   DESTINATION lib/${PROJECT_NAME}
 )
 
 install(FILES
-  interface/robot/simulation/simulation_config.py
+  # interface/robot/simulation/simulation_config.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
 install(DIRECTORY
-  interface/robot/simulation/sensors
-  interface/robot/simulation/newton
+  # interface/robot/simulation/sensors
+  # interface/robot/simulation/newton
   DESTINATION lib/${PROJECT_NAME}
   FILES_MATCHING
     PATTERN "*.py"
