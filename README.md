@@ -14,6 +14,6 @@ pixi run test-rail-follow
 
 Running tests with Artefacts
 ```bash
-pixi run -e artefacts artefacts run simulated_sensors
-pixi run -e artefacts artefacts run rail_target_follow
+pixi run -e artefacts artefacts run test-sim-sensors
+pixi run -e artefacts artefacts run test-rail-follow
 ```
