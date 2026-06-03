@@ -124,6 +124,9 @@ artefacts-toolkit = ">=1.0.0, <2"
 pytest = ">=9.0.3,<10"
 pyyaml = ">=6.0.3,<7"
 
+[feature.test.activation]
+scripts = ["scripts/tests_activation.sh"]
+
 [feature.artefacts.pypi-dependencies]
 artefacts-cli = "*"
 

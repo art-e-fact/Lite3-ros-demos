@@ -2,7 +2,7 @@ project: artefacts/lite3-ros-demos
 version: 0.1.0
 
 jobs:
-  rail_target_follow:
+  test-rail-follow:
     type: test
     timeout: 15 # minutes
     package:
@@ -24,7 +24,7 @@ jobs:
         - name: test_sim_rail_target_follow_distance
           run: "pixi run -e nav-test test-rail-follow"
   
-  simulated_sensors:
+  test-sim-sensors:
     type: test
     timeout: 5 # minutes
     package:
@@ -39,4 +39,3 @@ jobs:
       settings:
         - name: simulated_sensors_publishing_sensor_data
           run: "pixi run -e sim-test test-sim-sensors"
-          
