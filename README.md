@@ -1,4 +1,9 @@
 
+### Build the project
+```bash
+pixi run build
+```
+
 ### Run rail-following demo
 _Note: The simulation and the robot controller are requiring different ROS 2 versions, so we need to start them as separate processes._
 ```bash

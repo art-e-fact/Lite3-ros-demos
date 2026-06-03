@@ -26,18 +26,22 @@ default-environment = "sim"
 [tasks.test-sim-sensors]
 cmd = "pytest src/simulation_package/test/test_simulation_sensors.py -vv -s"
 default-environment = "sim-test"
+depends-on = ["build"]
 
 [tasks.test-rail-follow]
 cmd = "pytest src/rail_inspector/test/test_sim_rail_target_follow_distance.py -vv -s"
 default-environment = "nav-test"
+depends-on = ["build"]
 
 [tasks.sim-rail-follow]
 cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/mujoco_procedural_railroad.yaml"
 default-environment = "sim"
+depends-on = ["build"]
 
 [tasks.nav-rail-follow]
 cmd = "ros2 launch rail_inspector rail_target_follow.launch.py enable_heightmap:=true cloud_topic:=/mid360/points follow_distance:=1.5 min_linear_x:=0.35 max_linear_x:=0.45 stale_timeout_sec:=0.75"
 default-environment = "nav"
+depends-on = ["build"]
 
 [feature.sim]
 channels = [
