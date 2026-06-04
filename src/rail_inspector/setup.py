@@ -11,6 +11,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name, ['README.md']),
+        ('share/' + package_name + '/launch', ['launch/rail_target_follow.launch.py']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

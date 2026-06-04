@@ -74,8 +74,8 @@ else()
   set(CMAKE_EXE_LINKER_FLAGS "-Wl,--enable-new-dtags")
   set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
   set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+  # Prioritize system/pixi libraries over bundled ones
   set(CMAKE_INSTALL_RPATH
-    ${THIRD_PARTY}/onnxruntime/${BUILD_PLATFORM}/lib/
     ../lib/onnxruntime/
   )
 endif()
@@ -112,8 +112,32 @@ if(APPLE)
   # for ORT >= 1.18 and work with newer dylibs, so we keep them on the
   # include path (set above).
 else()
-  set_target_properties(onnxruntime PROPERTIES IMPORTED_LOCATION
-    "${THIRD_PARTY}/onnxruntime//${BUILD_PLATFORM}/lib/libonnxruntime.so")
+  # On Linux, check multiple paths for libonnxruntime
+  set(ONNXRUNTIME_LIB "")
+  
+  # Try pixi environment first
+  if(DEFINED ENV{PIXI_PROJECT_ROOT})
+    set(PIXI_LIB "$ENV{PIXI_PROJECT_ROOT}/.pixi/envs/default/lib/libonnxruntime.so.1")
+    if(EXISTS "${PIXI_LIB}")
+      set(ONNXRUNTIME_LIB "${PIXI_LIB}")
+    endif()
+  endif()
+  
+  # Try conda environment
+  if(NOT ONNXRUNTIME_LIB AND DEFINED ENV{CONDA_PREFIX})
+    set(CONDA_LIB "$ENV{CONDA_PREFIX}/lib/libonnxruntime.so.1")
+    if(EXISTS "${CONDA_LIB}")
+      set(ONNXRUNTIME_LIB "${CONDA_LIB}")
+    endif()
+  endif()
+  
+  # Fall back to bundled library
+  if(NOT ONNXRUNTIME_LIB)
+    set(ONNXRUNTIME_LIB "${THIRD_PARTY}/onnxruntime/${BUILD_PLATFORM}/lib/libonnxruntime.so")
+  endif()
+  
+  message(STATUS "Using Linux onnxruntime: ${ONNXRUNTIME_LIB}")
+  set_target_properties(onnxruntime PROPERTIES IMPORTED_LOCATION "${ONNXRUNTIME_LIB}")
 endif()
 
 ament_target_dependencies(rl_deploy
@@ -165,9 +189,9 @@ else()
 endif()
 
 set(LITE3_PYTHON_ENTRYPOINTS
-  interface/robot/simulation/start_simulation.py
-  interface/robot/simulation/mujoco_simulation_ros2.py
-  interface/robot/simulation/auto_waypoint_navigator.py
+  # interface/robot/simulation/start_simulation.py
+  # interface/robot/simulation/mujoco_simulation_ros2.py
+  # interface/robot/simulation/auto_waypoint_navigator.py
 )
 
 foreach(entrypoint IN LISTS LITE3_PYTHON_ENTRYPOINTS)
@@ -181,26 +205,26 @@ endforeach()
 
 # Install Python simulation scripts (runnable via: ros2 run lite3_sdk_deploy mujoco_simulation_ros2.py)
 install(PROGRAMS
-  interface/robot/simulation/start_simulation.py
-  interface/robot/simulation/mujoco_simulation_ros2.py
-  interface/robot/simulation/auto_waypoint_navigator.py
+  # interface/robot/simulation/start_simulation.py
+  # interface/robot/simulation/mujoco_simulation_ros2.py
+  # interface/robot/simulation/auto_waypoint_navigator.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
 install(DIRECTORY
-  interface/robot/simulation/scenes
-  interface/robot/simulation/sensors
+  # interface/robot/simulation/scenes
+  # interface/robot/simulation/sensors
   DESTINATION lib/${PROJECT_NAME}
 )
 
 install(FILES
-  interface/robot/simulation/simulation_config.py
+  # interface/robot/simulation/simulation_config.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
 install(DIRECTORY
-  interface/robot/simulation/sensors
-  interface/robot/simulation/newton
+  # interface/robot/simulation/sensors
+  # interface/robot/simulation/newton
   DESTINATION lib/${PROJECT_NAME}
   FILES_MATCHING
     PATTERN "*.py"
