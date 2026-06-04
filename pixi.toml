@@ -52,6 +52,11 @@ channels = [
 [feature.sim.activation]
 scripts = ["rosbuild/sim/install/setup.sh"]
 
+# macOS only: 
+# LDFLAGS isn't auto-set in kilted.
+[feature.sim.target.osx-arm64.activation.env]
+LDFLAGS = "-L$CONDA_PREFIX/lib"
+
 [feature.sim.dependencies]
 newton-examples = ">=1.2.0,<2"
 mujoco = ">=3.8.1,<4"
