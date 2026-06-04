@@ -140,22 +140,22 @@ class RailTargetFollowerNode(Node):
 
     def center_offset_callback(self, msg):
         self.latest_center_offset = float(msg.data)
-        self.center_offset_walltime = time.monotonic()
+        self.center_offset_walltime = self.get_clock().now().nanoseconds / 1e9
 
     def tangent_yaw_callback(self, msg):
         self.latest_tangent_yaw = float(msg.data)
-        self.tangent_yaw_walltime = time.monotonic()
+        self.tangent_yaw_walltime = self.get_clock().now().nanoseconds / 1e9
 
     def target_distance_callback(self, msg):
         self.latest_target_distance = float(msg.data)
-        self.target_distance_walltime = time.monotonic()
+        self.target_distance_walltime = self.get_clock().now().nanoseconds / 1e9
 
     def odom_callback(self, msg):
         self.latest_odom_yaw = self._yaw_from_quaternion(msg.pose.pose.orientation)
-        self.odom_walltime = time.monotonic()
+        self.odom_walltime = self.get_clock().now().nanoseconds / 1e9
 
     def control_callback(self):
-        now = time.monotonic()
+        now = self.get_clock().now().nanoseconds / 1e9
         if self._is_stale(now):
             self.publish_stop()
             self.get_logger().warn('Follower inputs are stale; stopping.', throttle_duration_sec=2.0)

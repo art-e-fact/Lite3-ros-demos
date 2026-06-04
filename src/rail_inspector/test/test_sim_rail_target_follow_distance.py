@@ -183,6 +183,7 @@ def test_rail_target_follow(tmp_path):
         'min_linear_x': '0.35',
         'max_linear_x': '0.45',
         'stale_timeout_sec': '0.75',
+        'use_sim_time': 'true',
         **{k: str(v) for k, v in artefacts_params.items() if k in _LOGIC_LAUNCH_PARAMS},
     }
     nav_proc, nav_log_file = _start_process(
