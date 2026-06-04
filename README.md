@@ -3,6 +3,7 @@
 ```bash
 pixi run build
 ```
+Note: All the ROS environments are build under the `rosbuild` folder. You can delete the folder if you need a clean build.
 
 ### Run rail-following demo
 _Note: The simulation and the robot controller are requiring different ROS 2 versions, so we need to start them as separate processes._
@@ -26,3 +27,4 @@ pixi run test-rail-follow
 pixi run -e artefacts artefacts run test-sim-sensors
 pixi run -e artefacts artefacts run test-rail-follow
 ```
+
