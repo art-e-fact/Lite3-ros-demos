@@ -1,6 +1,0 @@
-simulator: mujoco
-scene: procedural://blocks
-sensors:
-  realsense:
-    enable_depth: true
-    enable_color: true

@@ -1,5 +1,0 @@
-simulator: mujoco
-headless: false
-sensors:
-  mid360:
-    enabled: true
