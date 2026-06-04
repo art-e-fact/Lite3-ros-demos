@@ -5,3 +5,6 @@ procedural_env_seed: 123
 sensors:
   mid360:
     enabled: true
+rerun:
+  enabled: true
+  spawn: true

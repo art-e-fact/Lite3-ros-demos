@@ -953,6 +953,7 @@ def build_railroad_spec(
         "follow_target_speed": follow_speed,
         "follow_target_start_wait_sec": wait_sec,
         "update_scene": update_scene,
+        "railway_scene": scene,
     }
     return spec, meta
 

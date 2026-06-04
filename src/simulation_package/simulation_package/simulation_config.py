@@ -122,6 +122,13 @@ class SensorsConfig:
 
 
 @dataclass
+class RerunConfig:
+	enabled: bool = False
+	spawn: bool = True
+	save_path: str = ""
+
+
+@dataclass
 class SimulationConfig:
 	simulator: str = "newton"
 	scene: str = DEFAULT_SCENE_URI
@@ -129,6 +136,7 @@ class SimulationConfig:
 	headless: bool = True
 	procedural_env_seed: int = -1
 	sensors: SensorsConfig = field(default_factory=SensorsConfig)
+	rerun: RerunConfig = field(default_factory=RerunConfig)
 
 	@classmethod
 	def load(cls, config_path: str | None = None) -> "SimulationConfig":
@@ -218,6 +226,10 @@ class SimulationConfig:
 		_validate_positive(errors, "sensors.follow_camera.target_height_m", sensors.follow_camera.target_height_m)
 		_validate_positive(errors, "sensors.follow_camera.quality", sensors.follow_camera.quality)
 		_validate_unit_interval(errors, "sensors.follow_camera.smoothing", sensors.follow_camera.smoothing)
+
+		if self.rerun.enabled and simulator != "mujoco":
+			errors.append("rerun is only supported by the MuJoCo simulator")
+
 		return errors
 
 def candidate_package_roots() -> list[Path]:

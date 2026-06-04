@@ -86,3 +86,8 @@ sensors:
     target_height_m: 0.55
     smoothing: 0.08
     quality: 8
+
+rerun:
+  enabled: false
+  spawn: true
+  save_path: ''
