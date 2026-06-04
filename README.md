@@ -1,14 +1,12 @@
 
 Tested on Linux(x64) and MacOS (arm64).
 
-* On MacOS python 3.12 or higher is required.
 * The project is currently unsupported on Windows (Due to lack of dependencies available on robostack for Windows).
 * The project does run on WSL2, but when rendering Mujoco is extremely slow (OpenGL is not passed through by Nvidia GPUs to WSL).
 
 ## Requirements
 
 * Either Linux (Tested Ubuntu24.04) or MacOS (Tested MacOS 15)
-* At least Python 3.12 (Tested with Python 3.12)
 * [pixi](https://pixi.prefix.dev/latest/installation/)
 
 
