@@ -135,6 +135,9 @@ class MuJoCoSimulationNode(Node):
         self.declare_parameter('enable_pointcloud', config.sensors.realsense.enable_pointcloud)
         self.declare_parameter('enable_follow_camera', config.sensors.follow_camera.enabled)
         self.declare_parameter('follow_camera_video_path', config.sensors.follow_camera.video_path)
+        self.declare_parameter('enable_rerun', config.rerun.enabled)
+        self.declare_parameter('rerun_spawn', config.rerun.spawn)
+        self.declare_parameter('rerun_save_path', config.rerun.save_path)
 
         config = config.with_overrides({
             "simulator": "mujoco",
@@ -148,7 +151,14 @@ class MuJoCoSimulationNode(Node):
             "sensors.realsense.enable_pointcloud": _as_bool(self.get_parameter('enable_pointcloud').value, config.sensors.realsense.enable_pointcloud),
             "sensors.follow_camera.enabled": _as_bool(self.get_parameter('enable_follow_camera').value, config.sensors.follow_camera.enabled),
             "sensors.follow_camera.video_path": str(self.get_parameter('follow_camera_video_path').value).strip(),
+            "rerun.enabled": _as_bool(self.get_parameter('enable_rerun').value, config.rerun.enabled),
+            "rerun.spawn": _as_bool(self.get_parameter('rerun_spawn').value, config.rerun.spawn),
+            "rerun.save_path": str(self.get_parameter('rerun_save_path').value).strip(),
         })
+        if config.headless:
+            # Overriding spawn to False if simulator is running headlessly
+            config = config.with_overrides({"rerun.spawn": False})
+
         errors = config.validate()
         if errors:
             raise ValueError("Invalid simulation config: " + "; ".join(errors))
@@ -317,6 +327,30 @@ class MuJoCoSimulationNode(Node):
         self._publish_procedural_waypoints()
         self.waypoint_timer = self.create_timer(1.0, self._publish_procedural_waypoints)
 
+        self.rerun_enabled = config.rerun.enabled
+        self.rerun_recorder = None
+        if self.rerun_enabled:
+            import rerun as rr
+            import rerun_loader_mjcf
+
+            spawn = config.rerun.spawn and not config.headless
+            self.get_logger().info(f"[INFO] Initializing Rerun (spawn={spawn}, save_path={config.rerun.save_path or 'None'})")
+
+            rr.init("lite3_simulation", spawn=spawn)
+            if config.rerun.save_path:
+                save_path = os.path.abspath(config.rerun.save_path)
+                os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                rr.save(save_path)
+
+            rr.set_time("sim_time", duration=0.0)
+            self.rerun_logger = rerun_loader_mjcf.MJCFLogger(self.model)
+            self.rerun_logger.log_model()
+
+            if "railway_scene" in self.scene_meta:
+                self.scene_meta["railway_scene"].log_rerun()
+
+            self.rerun_recorder = rerun_loader_mjcf.MJCFRecorder(self.rerun_logger, timeline_name="sim_time")
+
     def _set_initial_pose(self, key: str, base_pose: tuple[float, float, float]):
         """关节位置设置为与 PyBullet 脚本一致的初始角度"""
         x, y, yaw = base_pose
@@ -482,6 +516,11 @@ class MuJoCoSimulationNode(Node):
                     mujoco.mj_step(self.model, self.data)
 
                     self.timestamp = step * DT
+                    if self.rerun_recorder:
+                        self.rerun_recorder.record(self.data)
+                        if step % 100 == 0:
+                            self.rerun_recorder.flush()
+
                     self._update_scene(self.timestamp)
                     stamp = self._make_sim_stamp(self.timestamp)
                     self._publish_clock(stamp)
@@ -515,6 +554,11 @@ class MuJoCoSimulationNode(Node):
                 # Handle ROS callbacks
                 rclpy.spin_once(self, timeout_sec=0.0)
         finally:
+            if self.rerun_recorder:
+                try:
+                    self.rerun_recorder.flush()
+                except Exception as e:
+                    self.get_logger().error(f"Failed to flush rerun recorder: {e}")
             self.follow_camera.close()
 
     def _apply_joint_torque(self):

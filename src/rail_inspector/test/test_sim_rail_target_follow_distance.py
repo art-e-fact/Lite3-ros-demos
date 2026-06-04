@@ -21,6 +21,7 @@ KILL_TIMEOUT_SEC = 5.0
 
 OUTPUT_FOLDER = Path(os.getenv("ARTEFACTS_SCENARIO_UPLOAD_DIR", "./"))
 TEST_VIDEO_PATH = OUTPUT_FOLDER / 'lite3_rail_target_follow_distance.mp4'
+TEST_RRD_PATH = OUTPUT_FOLDER / 'lite3_rail_target_follow_distance.rrd'
 TEST_CONFIG_PATH = OUTPUT_FOLDER / 'lite3_rail_target_follow_distance.yaml'
 
 # Simulation package source root — lets pixi run the sim with -m simulation_package.start_simulation
@@ -52,6 +53,8 @@ def _write_simulation_config() -> None:
     OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
     if TEST_VIDEO_PATH.exists():
         TEST_VIDEO_PATH.unlink()
+    if TEST_RRD_PATH.exists():
+        TEST_RRD_PATH.unlink()
     TEST_CONFIG_PATH.write_text(
         yaml.safe_dump({
             'simulator': 'mujoco',
@@ -66,6 +69,11 @@ def _write_simulation_config() -> None:
                     'enabled': True,
                     'video_path': str(TEST_VIDEO_PATH),
                 },
+            },
+            'rerun': {
+                'enabled': True,
+                'spawn': False,
+                'save_path': str(TEST_RRD_PATH),
             },
         }, sort_keys=False),
         encoding='utf-8',
@@ -280,4 +288,9 @@ def test_rail_target_follow(tmp_path):
     assert TEST_VIDEO_PATH.exists(), f"expected follow-camera video at {TEST_VIDEO_PATH}"
     assert TEST_VIDEO_PATH.stat().st_size > 1024, (
         f"follow-camera video at {TEST_VIDEO_PATH} is empty or too small"
+    )
+
+    assert TEST_RRD_PATH.exists(), f"expected Rerun recording at {TEST_RRD_PATH}"
+    assert TEST_RRD_PATH.stat().st_size > 1024, (
+        f"Rerun recording at {TEST_RRD_PATH} is empty or too small"
     )

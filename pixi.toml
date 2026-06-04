@@ -93,9 +93,11 @@ ros-kilted-nav-msgs = ">=5.5.2,<6"
 ros-kilted-sensor-msgs = ">=5.5.2,<6"
 ros-kilted-tf2-ros = ">=0.41.6,<0.42"
 ros-kilted-tf2-ros-py = ">=0.41.6,<0.42"
+rerun-sdk = ">=0.32.1,<0.33"
 
 [feature.sim.pypi-dependencies]
 perlin-noise = ">=1.14, <2"
+rerun-loader-mjcf = ">=1.0.1, <2"
 
 [feature.nav]
 channels = [
