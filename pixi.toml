@@ -14,17 +14,22 @@ build = [
     { task = "build-sim", environment = "sim" },
 ]
 
+[tasks.setup]
+cmd = "git submodule update --init --recursive"
+
 [tasks.build-nav]
 cmd = "colcon build --symlink-install --build-base rosbuild/nav/build --install-base rosbuild/nav/install --test-result-base rosbuild/nav/test_results --packages-skip simulation_package"
 inputs = ["src"]
 outputs = ["rosbuild/nav/install"]
 default-environment = "nav"
+depends-on = ["setup"]
 
 [tasks.build-sim]
 cmd = "colcon build --build-base rosbuild/sim/build --install-base rosbuild/sim/install --test-result-base rosbuild/sim/test_results --packages-select simulation_package drdds"
 inputs = ["src/simulation_package", "src/drdds"]
 outputs = ["rosbuild/sim/install"]
 default-environment = "sim"
+depends-on = ["setup"]
 
 
 [tasks.test-sim-sensors]
