@@ -42,6 +42,12 @@ cmd = "python -m simulation_package.start_simulation --config src/simulation_pac
 default-environment = "sim"
 depends-on = ["build"]
 
+# macOS requires mjpython
+[target.osx-arm64.tasks.sim-rail-follow]
+cmd = "mjpython -m simulation_package.start_simulation --config src/simulation_package/config/mujoco_procedural_railroad.yaml"
+default-environment = "sim"
+depends-on = ["build"]
+
 [tasks.nav-rail-follow]
 cmd = "ros2 launch rail_inspector rail_target_follow.launch.py enable_heightmap:=true cloud_topic:=/mid360/points follow_distance:=1.5 min_linear_x:=0.35 max_linear_x:=0.45 stale_timeout_sec:=0.75"
 default-environment = "nav"
@@ -55,6 +61,11 @@ channels = [
 
 [feature.sim.activation]
 scripts = ["rosbuild/sim/install/setup.sh"]
+
+# macOS only: 
+# LDFLAGS isn't auto-set in kilted.
+[feature.sim.target.osx-arm64.activation.env]
+LDFLAGS = "-L$CONDA_PREFIX/lib"
 
 [feature.sim.dependencies]
 newton-examples = ">=1.2.0,<2"
