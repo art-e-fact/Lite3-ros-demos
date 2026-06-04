@@ -1,4 +1,15 @@
 
+Tested on Linux(x64) and MacOS (arm64).
+
+* The project is currently unsupported on Windows (Due to lack of dependencies available on robostack for Windows).
+* The project does run on WSL2, but when rendering Mujoco is extremely slow (OpenGL is not passed through by Nvidia GPUs to WSL).
+
+## Requirements
+
+* Either Linux (Tested Ubuntu24.04) or MacOS (Tested MacOS 15)
+* [pixi](https://pixi.prefix.dev/latest/installation/)
+
+
 ### Build the project
 ```bash
 pixi run build
