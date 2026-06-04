@@ -1,7 +1,0 @@
-simulator: mujoco
-scene: procedural://railroad
-headless: false
-procedural_env_seed: 123
-sensors:
-  mid360:
-    enabled: true

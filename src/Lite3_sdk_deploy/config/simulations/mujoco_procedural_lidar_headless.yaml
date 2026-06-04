@@ -1,5 +1,0 @@
-simulator: mujoco
-scene: procedural://blocks
-sensors:
-  lidar_2d:
-    enabled: true

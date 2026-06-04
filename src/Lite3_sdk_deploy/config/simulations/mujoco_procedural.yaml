@@ -1,3 +1,0 @@
-simulator: mujoco
-headless: false
-scene: procedural://blocks
