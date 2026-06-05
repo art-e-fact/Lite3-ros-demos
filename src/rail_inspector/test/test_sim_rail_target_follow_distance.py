@@ -3,6 +3,7 @@ import math
 import os
 import signal
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -171,10 +172,12 @@ def test_rail_target_follow(tmp_path):
     sim_pythonpath = os.pathsep.join(
         part for part in [str(SIM_PACKAGE_ROOT), os.environ.get('PYTHONPATH', '')] if part
     )
+
+    sim_python = 'mjpython' if sys.platform == 'darwin' else 'python'
     sim_proc, sim_log_file = _start_process(
         cmd=[
             pixi_exe, 'run', '-e', 'sim',
-            'python', '-m', 'simulation_package.start_simulation',
+            sim_python, '-m', 'simulation_package.start_simulation',
             '--config', str(TEST_CONFIG_PATH),
         ],
         log_path=sim_log,

@@ -1,3 +1,3 @@
 [submodule "src/sdk_deploy"]
 	path = src/sdk_deploy
-	url = git@github.com:art-e-fact/sdk_deploy.git
+	url = https://github.com/art-e-fact/sdk_deploy.git
