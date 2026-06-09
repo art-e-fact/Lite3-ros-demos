@@ -34,13 +34,15 @@ To avoid dependency conflicts `pixi` will setup an artefacts environment for you
 pixi run -e artefacts artefacts ...
 ```
 
+_Alternatively, you may source the artefacts environment with `pixi shell -e artefacts`. Then you may use artefacts commands with out `pixi run -e artefacts`, e.g. `artefacts run test-rail-follow`_
+
 #### Creating a new project
 1. In the [Dashboard](https://app.artefacts.com) create a new project.
 2. Rename L1 of `artefacts.yaml` with the project you just created in the format `myorg/myproject`
 3. Login to artefacts with `pixi run -e artefacts artefacts login` (if not already)
 
 #### Joining an existing project
-1. Ask to be invited to the project (if not already)
+1. Ask to be invited to the project (if not already) as "developer" or "administrator"
 2. Rename L1 of `artefacts.yaml` in the format `myorg/myproject`
 3. Login to artefacts with `pixi run -e artefacts artefacts login` (if not already)
 
