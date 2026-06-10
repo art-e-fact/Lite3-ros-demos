@@ -1,10 +1,11 @@
 from pathlib import Path
+import os
+import rerun as rr
 import numpy as np
 import pyarrow as pa
 import pytest
 
-# Gracefully skip this test if rerun is not installed in the current environment
-rr = pytest.importorskip("rerun")
+OUTPUT_FOLDER = Path(os.getenv('ARTEFACTS_SCENARIO_UPLOAD_DIR', './'))
 
 try:
     from artefacts_toolkit.config import get_artefacts_params
@@ -12,7 +13,8 @@ try:
 except Exception:
     artefacts_params = {}
 
-RECORDING_PATH = Path("/home/azazdeaz/repos/art/Lite3-ros-demos/lite3_rail_target_follow_distance_test.rrd")
+USE_RECORDING_PATH = None
+# USE_RECORDING_PATH = OUTPUT_FOLDER / "lite3_rail_target_follow_distance_test.rrd"
 
 
 @pytest.fixture(scope="module")
@@ -87,11 +89,38 @@ def test_robot_keeps_max_distance_from_target(dataset):
     
     # Collect time-difference pairs: (sim_time as float seconds, distance as float)
     time_sec = df.iloc[np.flatnonzero(valid_mask)]["sim_time"].dt.total_seconds().tolist()
-    time_distance_pairs = list(zip(time_sec, distances))
     
     # Check that maximum distance limit (default 2.5m) was never exceeded
     max_distance_limit = float(artefacts_params.get("max_distance_limit", 2.5))
     max_measured_distance = distances.max() if len(distances) > 0 else 0.0
+    
+    # Save distance over time plot using Plotly
+    if len(distances) > 0:
+        import plotly.graph_objects as go
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=time_sec,
+            y=distances,
+            mode='lines',
+            name='Distance',
+            line=dict(color='royalblue', width=2)
+        ))
+        fig.add_hline(
+            y=max_distance_limit,
+            line_dash="dash",
+            line_color="red",
+            line_width=2,
+            annotation_text=f"Max Limit ({max_distance_limit}m)",
+            annotation_position="top left"
+        )
+        fig.update_layout(
+            title="Robot-to-Target Distance Over Time",
+            xaxis_title="Time (seconds)",
+            yaxis_title="Distance (meters)",
+            template="plotly_white"
+        )
+        OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
+        fig.write_html(OUTPUT_FOLDER / "distance_to_target.html")
     
     print(f"Max measured distance from target: {max_measured_distance:.4f} m (limit: {max_distance_limit:.4f} m)")
     assert max_measured_distance <= max_distance_limit, (

@@ -148,6 +148,7 @@ artefacts-toolkit = ">=1.0.0, <2"
 [feature.test.dependencies]
 pytest = ">=9.0.3,<10"
 pyyaml = ">=6.0.3,<7"
+plotly = ">=6.8.0,<7"
 
 [feature.test.activation]
 scripts = ["scripts/tests_activation.sh"]
