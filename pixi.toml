@@ -42,6 +42,11 @@ cmd = "pytest src/rail_inspector/test/test_sim_rail_target_follow_distance.py -v
 default-environment = "nav-test"
 depends-on = ["build"]
 
+[tasks.test-rerun-recording]
+cmd = "pytest src/rail_inspector/test/test_rerun_recording.py -vv -s"
+default-environment = "nav-test"
+depends-on = ["build"]
+
 [tasks.sim-rail-follow]
 cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/mujoco_procedural_railroad.yaml"
 default-environment = "sim"

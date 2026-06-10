@@ -119,7 +119,7 @@ def query_dataset(dataset, contents, step_ns=20_000_000):
     ).to_pandas()
 
 
-def test_recording_rail_target_follow(dataset):
+def test_robot_is_travelling(dataset):
     df = query_dataset(dataset, ["/bodies/TORSO"])
     
     translations_col = "/bodies/TORSO:Transform3D:translation"
@@ -137,7 +137,7 @@ def test_recording_rail_target_follow(dataset):
     total_distance = steps[steps <= MAX_STEP_M].sum()
     
     # Use baseline or configured threshold distance
-    min_distance_to_travel = float(artefacts_params.get("min_distance_to_travel", 1.5))
+    min_distance_to_travel = 8.5
     
     print(f"Total distance calculated: {total_distance:.4f} m (threshold: {min_distance_to_travel:.4f} m)")
     assert total_distance >= min_distance_to_travel, (

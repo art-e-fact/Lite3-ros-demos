@@ -31,11 +31,13 @@ pixi run nav-rail-follow
 ```bash
 pixi run test-sim-sensors
 pixi run test-rail-follow
+pixi run test-rerun-recording
 ```
 
 ### Running tests with Artefacts
 ```bash
 pixi run -e artefacts artefacts run test-sim-sensors
 pixi run -e artefacts artefacts run test-rail-follow
+pixi run -e artefacts artefacts run test-rerun-recording
 ```
 
