@@ -16,12 +16,16 @@ try:
 except Exception:
     artefacts_params = {}
 
+@pytest.fixture(scope="module")
+def follow_distance():
+    return float(artefacts_params.get('follow_distance', 1.0))
+
 USE_RECORDING_PATH = None
 # USE_RECORDING_PATH = OUTPUT_FOLDER / "lite3_rail_target_follow_distance_test.rrd"
 
 
 @pytest.fixture(scope="module")
-def recording_path(tmp_path_factory):
+def recording_path(tmp_path_factory, follow_distance):
     if USE_RECORDING_PATH is not None:
         return Path(USE_RECORDING_PATH)
 
@@ -55,7 +59,7 @@ def recording_path(tmp_path_factory):
     logic_args = {
         'enable_heightmap': 'true',
         'cloud_topic': '/mid360/points',
-        'follow_distance': '1.0',
+        'follow_distance': str(follow_distance),
         'min_linear_x': '0.35',
         'max_linear_x': '0.45',
         'stale_timeout_sec': '0.75',
@@ -145,7 +149,7 @@ def test_robot_is_travelling(dataset):
     )
 
 
-def test_robot_keeps_max_distance_from_target(dataset):
+def test_robot_keeps_max_distance_from_target(dataset, follow_distance):
     df = query_dataset(dataset, ["/bodies/TORSO", "/bodies/uwb_tag"])
     
     torso_col = "/bodies/TORSO:Transform3D:translation"
@@ -190,6 +194,14 @@ def test_robot_keeps_max_distance_from_target(dataset):
             line_width=2,
             annotation_text=f"Max Limit ({max_distance_limit}m)",
             annotation_position="top left"
+        )
+        fig.add_hline(
+            y=follow_distance,
+            line_dash="dash",
+            line_color="green",
+            line_width=2,
+            annotation_text=f"Target Follow Distance ({follow_distance}m)",
+            annotation_position="bottom left"
         )
         fig.update_layout(
             title="Robot-to-Target Distance Over Time",
