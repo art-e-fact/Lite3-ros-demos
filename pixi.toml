@@ -96,6 +96,8 @@ ros-kilted-tf2-ros-py = ">=0.41.6,<0.42"
 
 [feature.sim.pypi-dependencies]
 perlin-noise = ">=1.14, <2"
+
+[feature.rerun.pypi-dependencies]
 rerun-loader-mjcf = ">=1.0.1, <2"
 rerun-sdk = { version = ">=0.33.0, <0.34", extras = ["catalog"] }
 
@@ -124,9 +126,6 @@ pkg-config = ">=0.29.2,<0.30"
 cmake = ">=4.3.3,<5"
 ninja = ">=1.13.2,<2"
 sysroot_linux-64 = ">=2.17,<3"
-ros-jazzy-launch-testing = ">=3.4.10,<4"
-ros-jazzy-launch-testing-ros = ">=0.26.11,<0.27"
-ros-jazzy-launch-testing-ament-cmake = ">=3.4.10,<4"
 pytest = ">=9.0.3,<10"
 ros-jazzy-nav-msgs = ">=5.3.6,<6"
 ros-jazzy-sensor-msgs = ">=5.3.6,<6"
@@ -161,9 +160,8 @@ python = ">=3.14.5,<3.15"
 
 
 [environments]
-test = ["test"]
-sim = ["sim"]
-sim-test = ["sim", "test"]
+sim = ["sim", "rerun"]
+sim-test = ["sim", "test", "rerun"]
 nav = ["nav"]
-nav-test = ["nav", "test"]
+nav-test = ["nav", "test", "rerun"]
 artefacts = ["artefacts"]

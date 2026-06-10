@@ -32,7 +32,7 @@ _LOGIC_LAUNCH_PARAMS = {
 }
 
 
-def test_rail_target_follow(tmp_path):
+def test_robot_travels_minimum_distance(tmp_path):
     headless_str = str(artefacts_params.get('headless', 'false')).strip().lower()
     headless = headless_str in ('true', '1', 'yes', 'on')
 
