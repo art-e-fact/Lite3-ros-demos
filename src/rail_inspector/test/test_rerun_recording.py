@@ -20,8 +20,10 @@ except Exception:
 def follow_distance():
     return float(artefacts_params.get('follow_distance', 1.0))
 
+# Set this to a specific path to reuse an existing recording instead of generating a new one each time. 
+# (Useful for development/debugging to avoid long test runtimes, but should be None for CI runs to ensure fresh recordings.)
 USE_RECORDING_PATH = None
-# USE_RECORDING_PATH = OUTPUT_FOLDER / "lite3_rail_target_follow_distance_test.rrd"
+# USE_RECORDING_PATH = OUTPUT_FOLDER / "lite3_recording_test.rrd"
 
 
 @pytest.fixture(scope="module")
@@ -29,9 +31,9 @@ def recording_path(tmp_path_factory, follow_distance):
     if USE_RECORDING_PATH is not None:
         return Path(USE_RECORDING_PATH)
 
-    rrd_path = OUTPUT_FOLDER / "lite3_rail_target_follow_distance_test.rrd"
-    video_path = OUTPUT_FOLDER / "lite3_rail_target_follow_distance_test.mp4"
-    config_path = OUTPUT_FOLDER / "lite3_rail_target_follow_distance_test.yaml"
+    rrd_path = OUTPUT_FOLDER / "lite3_recording_test.rrd"
+    video_path = OUTPUT_FOLDER / "lite3_recording_test.mp4"
+    config_path = OUTPUT_FOLDER / "lite3_recording_test.yaml"
 
     for p in (rrd_path, video_path):
         if p.exists():
@@ -215,4 +217,95 @@ def test_robot_keeps_max_distance_from_target(dataset, follow_distance):
     print(f"Max measured distance from target: {max_measured_distance:.4f} m (limit: {max_distance_limit:.4f} m)")
     assert max_measured_distance <= max_distance_limit, (
         f"Robot exceeded max distance limit of {max_distance_limit} m (measured {max_measured_distance:.3f} m)"
+    )
+
+
+def test_robot_keeps_close_to_rail_center(dataset):
+    df = query_dataset(dataset, ["/bodies/TORSO", "/network/mission_waypoints"])
+    
+    torso_col = "/bodies/TORSO:Transform3D:translation"
+    wp_col = "/network/mission_waypoints:Points3D:positions"
+    assert torso_col in df.columns, f"Could not find {torso_col} in recording"
+    assert wp_col in df.columns, f"Could not find {wp_col} in recording"
+    
+    # Extract the static waypoints from the last valid row
+    valid_wp_rows = df[df[wp_col].notna()]
+    if len(valid_wp_rows) == 0:
+        pytest.fail("No waypoints found in `/network/mission_waypoints`")
+    
+    wps_raw = valid_wp_rows[wp_col].iloc[-1]
+    track = np.vstack(wps_raw)[:, :2]  # N x 2
+    
+    # Extract robot torso positions
+    torso_pts = np.vstack([t[0] for t in df[torso_col]])
+    
+    # Exclude initial uninitialized frames (spawn coordinates)
+    valid_mask = (torso_pts[:, 0] != 0.0)
+    torso_pts = torso_pts[valid_mask]
+    
+    # Collect time-difference pairs: (sim_time as float seconds)
+    time_sec = df.iloc[np.flatnonzero(valid_mask)]["sim_time"].dt.total_seconds().tolist()
+    
+    deviations = []
+    for p in torso_pts[:, :2]:
+        # Compute distances to all points in track
+        dist_sq = np.sum((track - p)**2, axis=1)
+        # Find the indices of the two closest points (smallest distances)
+        closest_idxs = np.argsort(dist_sq)[:2]
+        A = track[closest_idxs[0]]
+        B = track[closest_idxs[1]]
+        
+        # Calculate distance from p to segment AB
+        ab = B - A
+        ab_len_sq = np.sum(ab**2)
+        if ab_len_sq < 1e-9:
+            # A and B are essentially the same point
+            dev = float(np.sqrt(dist_sq[closest_idxs[0]]))
+        else:
+            # Projection factor t
+            t = np.dot(p - A, ab) / ab_len_sq
+            # Clamp to segment
+            t_clamped = np.clip(t, 0.0, 1.0)
+            # Closest point on segment
+            closest_point = A + t_clamped * ab
+            dev = float(np.linalg.norm(p - closest_point))
+            
+        deviations.append(dev)
+        
+    deviations = np.array(deviations)
+    
+    max_deviation_limit = 0.20  # 20 cm
+    max_measured_deviation = deviations.max() if len(deviations) > 0 else 0.0
+    
+    # Save deviation over time plot using Plotly
+    if len(deviations) > 0:
+        import plotly.graph_objects as go
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=time_sec,
+            y=deviations,
+            mode='lines',
+            name='Deviation',
+            line=dict(color='firebrick', width=2)
+        ))
+        fig.add_hline(
+            y=max_deviation_limit,
+            line_dash="dash",
+            line_color="red",
+            line_width=2,
+            annotation_text=f"Max Limit ({max_deviation_limit}m)",
+            annotation_position="top left"
+        )
+        fig.update_layout(
+            title="Robot Deviation from Rail Center Over Time",
+            xaxis_title="Time (seconds)",
+            yaxis_title="Deviation (meters)",
+            template="plotly_white"
+        )
+        OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
+        fig.write_html(OUTPUT_FOLDER / "deviation_from_rail.html")
+        
+    print(f"Max measured deviation from rail center: {max_measured_deviation:.4f} m (limit: {max_deviation_limit:.4f} m)")
+    assert max_measured_deviation <= max_deviation_limit, (
+        f"Robot exceeded max rail deviation limit of {max_deviation_limit} m (measured {max_measured_deviation:.3f} m)"
     )

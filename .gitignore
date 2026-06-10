@@ -6,6 +6,7 @@ rosbuild/
 __pycache__/
 *.pyc
 .python-version
+test_outputs/
 
 # pixi environments
 .pixi/*
