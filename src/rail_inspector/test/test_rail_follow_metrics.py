@@ -5,7 +5,10 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-OUTPUT_FOLDER = Path(os.getenv('ARTEFACTS_SCENARIO_UPLOAD_DIR', './'))
+from sim_control_harness import SimControlHarness, StopReason
+
+OUTPUT_FOLDER = Path(os.getenv('ARTEFACTS_SCENARIO_UPLOAD_DIR', './test_outputs'))
+OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
 
 try:
     from artefacts_toolkit.config import get_artefacts_params
@@ -18,9 +21,84 @@ USE_RECORDING_PATH = None
 
 
 @pytest.fixture(scope="module")
-def dataset():
-    assert RECORDING_PATH.exists(), f"Recording not found at {RECORDING_PATH}"
-    with rr.server.Server(datasets={"recording": [str(RECORDING_PATH)]}) as server:
+def recording_path(tmp_path_factory):
+    if USE_RECORDING_PATH is not None:
+        return Path(USE_RECORDING_PATH)
+
+    rrd_path = OUTPUT_FOLDER / "lite3_rail_target_follow_distance_test.rrd"
+    video_path = OUTPUT_FOLDER / "lite3_rail_target_follow_distance_test.mp4"
+    config_path = OUTPUT_FOLDER / "lite3_rail_target_follow_distance_test.yaml"
+
+    for p in (rrd_path, video_path):
+        if p.exists():
+            p.unlink()
+
+    headless_str = str(artefacts_params.get('headless', 'false')).strip().lower()
+    headless = headless_str in ('true', '1', 'yes', 'on')
+
+    sim_config = {
+        'simulator': 'mujoco',
+        'scene': 'procedural://railroad',
+        'headless': headless,
+        'procedural_env_seed': 123,
+        'sensors': {
+            'mid360': {'enabled': True},
+            'follow_camera': {'enabled': True, 'video_path': str(video_path)},
+        },
+        'rerun': {
+            'enabled': True,
+            'spawn': False,
+            'save_path': str(rrd_path),
+        },
+    }
+
+    logic_args = {
+        'enable_heightmap': 'true',
+        'cloud_topic': '/mid360/points',
+        'follow_distance': '1.0',
+        'min_linear_x': '0.35',
+        'max_linear_x': '0.45',
+        'stale_timeout_sec': '0.75',
+        'use_sim_time': 'true',
+        **{k: str(v) for k, v in artefacts_params.items() if k in {
+            'follow_distance', 'min_linear_x', 'max_linear_x',
+            'distance_error_for_max_speed', 'max_linear_y', 'max_angular_z',
+            'k_center', 'k_heading', 'stale_timeout_sec',
+        }},
+    }
+
+    repo_root = Path(__file__).resolve().parents[3]
+    sim_package_root = repo_root / 'src' / 'simulation_package'
+    min_distance = float(artefacts_params.get('min_distance_to_travel', 10.0))
+
+    with SimControlHarness(
+        sim_config,
+        config_path=config_path,
+        log_dir=tmp_path_factory.mktemp("harness_logs"),
+        repo_root=repo_root,
+        sim_package_root=sim_package_root,
+        control_launch_args=logic_args,
+        max_runtime_sec=300.0,
+        sim_timeout_sec=120.0,
+    ) as harness:
+        reason = harness.wait(
+            predicate=lambda: harness.total_distance_m >= min_distance,
+        )
+        if reason in (StopReason.SIM_EXITED, StopReason.CONTROL_EXITED):
+            pytest.fail(
+                f"Simulation/control exited unexpectedly (reason={reason}).\n"
+                f"--- SIM LOG ---\n{harness.sim_log_tail()}\n"
+                f"--- CONTROL LOG ---\n{harness.control_log_tail()}"
+            )
+
+    assert rrd_path.exists(), f"Recording not found at {rrd_path}"
+    return rrd_path
+
+
+@pytest.fixture(scope="module")
+def dataset(recording_path):
+    assert recording_path.exists(), f"Recording not found at {recording_path}"
+    with rr.server.Server(datasets={"recording": [str(recording_path)]}) as server:
         yield server.client().get_dataset("recording")
 
 
