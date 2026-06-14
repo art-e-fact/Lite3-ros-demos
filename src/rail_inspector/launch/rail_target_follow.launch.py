@@ -1,7 +1,9 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, LogInfo, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, LogInfo, OpaqueFunction, IncludeLaunchDescription
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch_ros.substitutions import FindPackageShare
 
 
 def launch_setup(context, *args, **kwargs):
@@ -20,8 +22,29 @@ def launch_setup(context, *args, **kwargs):
 
     actions = []
 
+    livox_pkg = FindPackageShare("livox_ros_driver2").perform(context)
+
+
     if enable_heightmap and cloud_topic:
         actions.extend([
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource([f"{livox_pkg}/launch_ROS2/msg_MID360s_launch.py"]),
+            ),   
+
+            Node(
+                package='rail_inspector', 
+                executable='relay_node',
+                output='screen',
+            ),
+
+            Node(
+                package='tf2_ros', 
+                executable='static_transform_publisher',
+                output='screen',
+                # arguments=["0.2", "0", "0.38", "0.0", "0.38397", "0.0", "base_link", "livox_frame"],
+                arguments=["0", "0", "0", "0", "0", "0.0", "base_link", "livox_frame"]
+            ),
+
             Node(
                 package='simple_local_heightmap',
                 executable='local_heightmap_node',
@@ -55,7 +78,10 @@ def launch_setup(context, *args, **kwargs):
                     'tangent_yaw_topic': '/rail_detector/tangent_yaw',
                     'target_distance_topic': '/rail_detector/target_distance',
                     'use_sim_time': use_sim_time,
-                    'track_gauge': 1.067,
+                    'track_gauge': 0.9,
+                    'rail_width': 0.06,
+                    'num_slices': 30,
+                    'lateral_search_width': 0.7
                 }],
             ),
             Node(
@@ -92,15 +118,15 @@ def launch_setup(context, *args, **kwargs):
             )
         )
 
-    actions.append(
-        Node(
-            package='lite3_sdk_deploy',
-            executable='rl_deploy',
-            name='rl_deploy',
-            output='screen',
-            arguments=['--twist'],
-        )
-    )
+    # actions.append(
+    #     Node(
+    #         package='lite3_sdk_deploy',
+    #         executable='rl_deploy',
+    #         name='rl_deploy',
+    #         output='screen',
+    #         arguments=['--twist'],
+    #     )
+    # )
 
     return actions
 

@@ -2,10 +2,11 @@
 authors = [
     "Tomo Norman <tomo@artefacts.com>",
     "Andras Polgar <andras@artefacts.com>",
+    "Bach Nguyen <bach@artefacts.com>"
 ]
 channels = ["https://prefix.dev/conda-forge"]
 name = "lite3-workspace"
-platforms = ["linux-64", "osx-arm64"]
+platforms = ["linux-64", "osx-arm64", "linux-aarch64"]
 version = "0.1.0"
 
 [tasks]
@@ -18,7 +19,7 @@ build = [
 cmd = "git submodule update --init --recursive"
 
 [tasks.build-nav]
-cmd = "colcon build --symlink-install --build-base rosbuild/nav/build --install-base rosbuild/nav/install --test-result-base rosbuild/nav/test_results --packages-skip simulation_package"
+cmd = "colcon build --symlink-install --build-base rosbuild/nav/build --install-base rosbuild/nav/install --test-result-base rosbuild/nav/test_results --packages-skip simulation_package --cmake-args -DROS_EDITION=ROS2 -DDISTRO_ROS=jazzy -DBUILD_TESTING=OFF"
 inputs = ["src"]
 outputs = ["rosbuild/nav/install"]
 default-environment = "nav"
@@ -54,7 +55,7 @@ default-environment = "sim"
 depends-on = ["build"]
 
 [tasks.nav-rail-follow]
-cmd = "ros2 launch rail_inspector rail_target_follow.launch.py enable_heightmap:=true cloud_topic:=/mid360/points follow_distance:=1.5 min_linear_x:=0.35 max_linear_x:=0.45 stale_timeout_sec:=0.75 use_sim_time:=true"
+cmd = "ros2 launch rail_inspector rail_target_follow.launch.py enable_heightmap:=true cloud_topic:=/livox/lidar follow_distance:=1.5 min_linear_x:=0.35 max_linear_x:=0.45 stale_timeout_sec:=0.75 use_sim_time:=true"
 default-environment = "nav"
 depends-on = ["build"]
 
@@ -142,6 +143,9 @@ ros-jazzy-joy = ">=3.3.0,<4"
 ros-jazzy-teleop-twist-joy = ">=2.6.5,<3"
 ros-jazzy-laser-geometry = ">=2.7.2,<3"
 ros-jazzy-image-geometry = ">=4.1.0,<5"
+pcl = ">=1.15.1,<2"
+sysroot_linux-aarch64 = ">=2.17,<3"
+ros-jazzy-pcl-conversions = ">=2.6.2,<3"
 
 [feature.test.pypi-dependencies]
 artefacts-toolkit = ">=1.0.0, <2"
