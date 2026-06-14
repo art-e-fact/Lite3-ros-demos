@@ -57,3 +57,29 @@ pixi run -e artefacts artefacts run test-sim-sensors
 pixi run test-sim-sensors
 pixi run test-rail-follow
 ```
+
+### Running on Real Lite3 
+```bash
+cd /home/ysc/Desktop/projects/Lite3-ros-demos
+pixi run nav-rail-follow
+```
+
+You can tune [rail detector params](https://github.com/art-e-fact/Lite3-ros-demos/blob/real-lite3/src/rail_inspector/launch/rail_target_follow.launch.py#L81-L84) to customize to real lite3:
+
+```py
+...
+Node(
+    package='rail_inspector',
+    executable='rail_detector_node',
+    name='rail_detector_node',
+    output='screen',
+    parameters=[{
+        ...
+        'track_gauge': 0.9,
+        'rail_width': 0.06,
+        'num_slices': 30,
+        'lateral_search_width': 0.7
+    }],
+),
+...
+```
