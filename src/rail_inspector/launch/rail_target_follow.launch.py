@@ -23,7 +23,8 @@ def launch_setup(context, *args, **kwargs):
     actions = []
 
     livox_pkg = FindPackageShare("livox_ros_driver2").perform(context)
-
+    rail_inspector_pkg = FindPackageShare("rail_inspector").perform(context)
+    rviz_filepath = f"{rail_inspector_pkg}/config/rail_inspector.rviz"
 
     if enable_heightmap and cloud_topic:
         actions.extend([
@@ -106,6 +107,14 @@ def launch_setup(context, *args, **kwargs):
                     'k_heading': k_heading,
                     'stale_timeout_sec': stale_timeout_sec,
                 }],
+            ),
+
+            # RViz2
+            Node(
+                package="rviz2",
+                executable="rviz2",
+                output="screen",
+                arguments=["-d", rviz_filepath]
             ),
         ])
     elif enable_heightmap:

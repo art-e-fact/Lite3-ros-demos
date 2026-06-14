@@ -12,6 +12,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name, ['README.md']),
         ('share/' + package_name + '/launch', ['launch/rail_target_follow.launch.py']),
+        ('share/' + package_name + '/config', ['config/rail_inspector.rviz']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
