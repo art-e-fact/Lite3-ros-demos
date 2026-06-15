@@ -26,7 +26,6 @@ In a separate terminal, run before the target gets too far in the simulation:
 pixi run nav-rail-follow
 ```
 
-
 ### Running tests with pytest
 ```bash
 pixi run test-sim-sensors
@@ -34,10 +33,36 @@ pixi run test-rail-follow
 pixi run test-rerun-recording
 ```
 
+
 ### Running tests with Artefacts
-```bash
-pixi run -e artefacts artefacts run test-sim-sensors
-pixi run -e artefacts artefacts run test-rail-follow
-pixi run -e artefacts artefacts run test-rerun-recording
+
+
+To avoid dependency conflicts `pixi` will setup an artefacts environment for you. `artefacts` commands can be ran by prefacing with:
+```
+pixi run -e artefacts artefacts ...
 ```
 
+_Alternatively, you may source the artefacts environment with `pixi shell -e artefacts`. Then you may use artefacts commands with out `pixi run -e artefacts`, e.g. `artefacts run test-rail-follow`_
+
+#### Creating a new project
+1. In the [Dashboard](https://app.artefacts.com) create a new project.
+2. Rename L1 of `artefacts.yaml` with the project you just created in the format `myorg/myproject`
+3. Login to artefacts with `pixi run -e artefacts artefacts login` (if not already)
+
+#### Joining an existing project
+1. Ask to be invited to the project (if not already) as "developer" or "administrator"
+2. Rename L1 of `artefacts.yaml` in the format `myorg/myproject`
+3. Login to artefacts with `pixi run -e artefacts artefacts login` (if not already)
+
+Then run the tests with 
+```bash
+pixi run -e artefacts artefacts run test-rail-follow
+pixi run -e artefacts artefacts run test-rerun-recording
+pixi run -e artefacts artefacts run test-sim-sensors
+```
+
+### Running tests with pytest
+```bash
+pixi run test-sim-sensors
+pixi run test-rail-follow
+```
