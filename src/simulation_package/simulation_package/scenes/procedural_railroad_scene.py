@@ -659,6 +659,20 @@ def log_network(net: RailNetwork, terrain: TerrainSpec | None = None):
             static=True,
         )
 
+    # Mission waypoints
+    mission_xy = _build_mainline_mission_xy(net)
+    if mission_xy:
+        mission_pts = np.array([[xy[0], xy[1], sh / 2 + 0.05] for xy in mission_xy])
+        rr.log(
+            "network/mission_waypoints",
+            rr.Points3D(
+                positions=mission_pts,
+                colors=[255, 0, 0],
+                radii=0.03,
+            ),
+            static=True,
+        )
+
     # Terrain mesh
     if terrain is not None:
         elevation, (xmin, xmax, ymin, ymax) = net.generate_terrain(terrain)

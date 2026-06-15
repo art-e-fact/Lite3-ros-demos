@@ -26,10 +26,18 @@ In a separate terminal, run before the target gets too far in the simulation:
 pixi run nav-rail-follow
 ```
 
+### Running tests with pytest
+```bash
+pixi run test-sim-sensors
+pixi run test-rail-follow
+pixi run test-rerun-recording
+```
+
+
 ### Running tests with Artefacts
 
-To avoid dependency conflicts `pixi` will setup an artefacts environment for you. `artefacts` commands can be ran by prefacing with:
 
+To avoid dependency conflicts `pixi` will setup an artefacts environment for you. `artefacts` commands can be ran by prefacing with:
 ```
 pixi run -e artefacts artefacts ...
 ```
@@ -49,6 +57,7 @@ _Alternatively, you may source the artefacts environment with `pixi shell -e art
 Then run the tests with 
 ```bash
 pixi run -e artefacts artefacts run test-rail-follow
+pixi run -e artefacts artefacts run test-rerun-recording
 pixi run -e artefacts artefacts run test-sim-sensors
 ```
 

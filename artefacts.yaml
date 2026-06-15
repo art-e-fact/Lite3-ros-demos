@@ -39,3 +39,19 @@ jobs:
       settings:
         - name: simulated_sensors_publishing_sensor_data
           run: "pixi run -e sim-test test-sim-sensors"
+  
+  test-rerun-recording:
+    type: test
+    timeout: 5 # minutes
+    package:
+      docker:
+        build:
+          dockerfile: empty
+    runtime:
+      framework: other
+      simulator: mujoco
+      
+    scenarios:
+      settings:
+        - name: rerun_recording
+          run: "pixi run -e nav-test test-rerun-recording"
