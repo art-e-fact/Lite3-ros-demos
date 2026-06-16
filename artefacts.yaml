@@ -52,6 +52,9 @@ jobs:
       simulator: mujoco
       
     scenarios:
+      defaults:
+        params:
+          headless: "true"
       settings:
         - name: rerun_recording
           run: "pixi run -e nav-test test-rerun-recording"

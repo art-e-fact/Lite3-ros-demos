@@ -61,6 +61,13 @@ pixi run -e artefacts artefacts run test-rerun-recording
 pixi run -e artefacts artefacts run test-sim-sensors
 ```
 
+A dockerfile is provided for running on the artefacts cloud (or in a container locally):
+
+```
+pixi run -e artefacts artefacts run-remote test-rerun-recording # Artefacts Platform (Cloud)
+pixi run -e artefacts artefacts run --in-container test-rerun-recording --gpus=all (Locally through Docker)
+```
+
 ### Running tests with pytest
 ```bash
 pixi run test-sim-sensors

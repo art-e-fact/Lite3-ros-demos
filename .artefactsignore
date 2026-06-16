@@ -1,0 +1,5 @@
+.devcontainer/
+.pixi/
+img/
+log/
+rosbuild/
