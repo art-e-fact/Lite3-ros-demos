@@ -9,6 +9,7 @@ ENV MUJOCO_GL=egl
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     git \
     build-essential \
     cmake \

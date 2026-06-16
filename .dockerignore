@@ -3,3 +3,4 @@
 img/
 log/
 rosbuild/
+src/sdk_deploy/

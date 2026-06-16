@@ -2,6 +2,7 @@ build/
 install/
 log/
 rosbuild/
+src/sdk_deploy/
 .vscode/
 __pycache__/
 *.pyc
