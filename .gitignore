@@ -7,6 +7,7 @@ __pycache__/
 *.pyc
 .python-version
 test_outputs/
+bin/
 
 # pixi environments
 .pixi/*
