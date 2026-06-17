@@ -15,13 +15,13 @@ if str(SIMULATION_DIR) not in sys.path:
 import rclpy
 
 from ros_bridge import NewtonRosBridge
-from simulation import DT, ODOM_EVERY_STEPS, PUBLISH_EVERY_STEPS, ROS_SPIN_EVERY_STEPS, NewtonSimulation, create_newton_viewer
+from simulation import DT, ROS_SPIN_EVERY_STEPS, NewtonSimulation, create_newton_viewer
 from sensors.newton.sensor_manager import NewtonSensorManager, NewtonSensorOptions
 from simulation_config import SimulationConfig
 
 RENDER_EVERY_STEPS = 5
 
-def run_loop(sim: NewtonSimulation, ros: NewtonRosBridge, sensors: NewtonSensorManager | None = None):
+def run_loop(sim: NewtonSimulation, ros: NewtonRosBridge, state_every_steps: int, sensors: NewtonSensorManager | None = None):
     next_step_time = time.perf_counter()
     while rclpy.ok() and not ros.should_exit():
         sleep_time = next_step_time - time.perf_counter()
@@ -40,11 +40,9 @@ def run_loop(sim: NewtonSimulation, ros: NewtonRosBridge, sensors: NewtonSensorM
             sensors.update(sim.state_0, sim.step_count, sim.timestamp)
 
         state = None
-        if sim.step_count % PUBLISH_EVERY_STEPS == 0:
+        if sim.step_count % state_every_steps == 0:
             state = sim.state_snapshot()
             ros.publish_state(sim.timestamp, state, sim.last_tau)
-        if sim.step_count % ODOM_EVERY_STEPS == 0:
-            state = state or sim.state_snapshot()
             ros.publish_odom_and_tf(sim.timestamp, state)
         
         if sim.step_count % RENDER_EVERY_STEPS == 0:
@@ -72,8 +70,10 @@ def run_newton(config: SimulationConfig, ros_args: list[str] | None = None):
     )
     sensors = NewtonSensorManager(sim.model, sim.state_0, ros.node, DT, sensor_options)
 
+    state_every_steps = max(1, int(round(1.0 / (config.robot.state_frequency_hz * DT))))
+
     try:
-        run_loop(sim, ros, sensors)
+        run_loop(sim, ros, state_every_steps, sensors)
     finally:
         ros.destroy()
         if rclpy.ok():
