@@ -1,3 +1,6 @@
 [submodule "src/sdk_deploy"]
 	path = src/sdk_deploy
 	url = https://github.com/art-e-fact/sdk_deploy.git
+[submodule "src/assets_package/deep_robotics_model"]
+	path = src/assets_package/deep_robotics_model
+	url = https://github.com/DeepRoboticsLab/deep_robotics_model.git

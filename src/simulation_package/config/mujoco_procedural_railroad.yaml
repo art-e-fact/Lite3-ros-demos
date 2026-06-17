@@ -6,5 +6,5 @@ sensors:
   mid360:
     enabled: true
 rerun:
-  enabled: true
+  enabled: false
   spawn: true
