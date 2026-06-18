@@ -321,6 +321,8 @@ class MuJoCoSimulationNode(Node):
         )
         self.follow_camera_step_interval = max(1, int(round(1.0 / (config.sensors.follow_camera.fps * DT))))
 
+        self.state_step_interval = max(1, int(round(1.0 / (config.robot.state_frequency_hz * DT))))
+
         self._publish_clock(self._make_sim_stamp())
         # Publish all static transforms in one call
         self._publish_static_transforms()
@@ -525,12 +527,12 @@ class MuJoCoSimulationNode(Node):
                     stamp = self._make_sim_stamp(self.timestamp)
                     self._publish_clock(stamp)
 
-                    # Keep TF current for exact sensor timestamp lookups.
-                    self._publish_odom_and_tf(stamp, publish_odom=False)
+                    print(f"Intervals: state={self.state_step_interval}, lidar={self.lidar_step_interval}, mid360={self.mid360_step_interval}, depth={self.depth_step_interval}, follow_camera={self.follow_camera_step_interval}")
 
-                    # 采样 & 发送观测
-                    self._publish_robot_state(stamp)
-                    self._publish_odom_and_tf(stamp)
+                    # Sample & Publish Observation
+                    if step % self.state_step_interval == 0:
+                        self._publish_robot_state(stamp)
+                        self._publish_odom_and_tf(stamp)
 
                     # LiDAR scan
                     if step % self.lidar_step_interval == 0:

@@ -129,10 +129,16 @@ class RerunConfig:
 
 
 @dataclass
+class RobotConfig:
+	robot_description: str = DEFAULT_ROBOT_DESCRIPTION_URI
+	state_frequency_hz: float = 50.0
+
+
+@dataclass
 class SimulationConfig:
 	simulator: str = "newton"
 	scene: str = DEFAULT_SCENE_URI
-	robot_description: str = DEFAULT_ROBOT_DESCRIPTION_URI
+	robot: RobotConfig = field(default_factory=RobotConfig)
 	headless: bool = True
 	procedural_env_seed: int = -1
 	sensors: SensorsConfig = field(default_factory=SensorsConfig)
@@ -147,6 +153,11 @@ class SimulationConfig:
 
 	@classmethod
 	def from_dict(cls, data: dict[str, Any] | None) -> "SimulationConfig":
+		if data is not None:
+			if "robot_description" in data:
+				robot_data = data.setdefault("robot", {})
+				if isinstance(robot_data, dict):
+					robot_data.setdefault("robot_description", data.pop("robot_description"))
 		return _dataclass_from_dict(cls, data or {})
 
 	def with_overrides(self, overrides: dict[str, Any]) -> "SimulationConfig":
@@ -170,7 +181,7 @@ class SimulationConfig:
 		return name or None
 
 	def resolved_robot_description(self) -> str:
-		return str(resolve_path(self.robot_description))
+		return str(resolve_path(self.robot.robot_description))
 
 	def validate(self) -> list[str]:
 		errors: list[str] = []
@@ -189,7 +200,7 @@ class SimulationConfig:
 				errors.append(f"scene must be an MJCF/XML file or one of: {supported}")
 		elif scene_value:
 			scene_path = resolve_path(scene_value, must_exist=False)
-		robot_path = resolve_path(self.robot_description, must_exist=False)
+		robot_path = resolve_path(self.robot.robot_description, must_exist=False)
 		if scene_path is not None and scene_path.suffix.lower() not in {".xml", ".mjcf"}:
 			errors.append("scene must be an MJCF/XML file")
 		if robot_path.suffix.lower() == ".usd" and simulator != "newton":
@@ -200,6 +211,8 @@ class SimulationConfig:
 			errors.append(f"scene does not exist: {scene_path}")
 		if not robot_path.exists():
 			errors.append(f"robot_description does not exist: {robot_path}")
+
+		_validate_positive(errors, "robot.state_frequency_hz", self.robot.state_frequency_hz)
 
 		sensors = self.sensors
 		if sensors.realsense.enable_pointcloud and not sensors.realsense.enable_depth:
