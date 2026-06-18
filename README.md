@@ -61,8 +61,12 @@ pixi run -e artefacts artefacts run test-rerun-recording
 pixi run -e artefacts artefacts run test-sim-sensors
 ```
 
-### Running tests with pytest
+## Logging to Rerun
+To start logging the sensor, tf, and joint state data to Rerun:
 ```bash
-pixi run test-sim-sensors
-pixi run test-rail-follow
+pixi run rerun-logger
+```
+Or without spawning the viewer window:
+```bash
+pixi run rerun-logger --headless
 ```
