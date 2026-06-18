@@ -6,6 +6,9 @@ from launch_ros.actions import Node
 
 def launch_setup(context, *args, **kwargs):
     enable_heightmap = LaunchConfiguration('enable_heightmap').perform(context).strip().lower() == 'true'
+    use_rl_deploy_controller = (
+        LaunchConfiguration('use_rl_deploy_controller').perform(context).strip().lower() == 'true'
+    )
     cloud_topic = LaunchConfiguration('cloud_topic').perform(context).strip()
     use_sim_time = LaunchConfiguration('use_sim_time')
     follow_mode = LaunchConfiguration('follow_mode')
@@ -102,15 +105,16 @@ def launch_setup(context, *args, **kwargs):
             )
         )
 
-    actions.append(
-        Node(
-            package='lite3_sdk_deploy',
-            executable='rl_deploy',
-            name='rl_deploy',
-            output='screen',
-            arguments=['--twist'],
+    if use_rl_deploy_controller:
+        actions.append(
+            Node(
+                package='lite3_sdk_deploy',
+                executable='rl_deploy',
+                name='rl_deploy',
+                output='screen',
+                arguments=['--twist'],
+            )
         )
-    )
 
     return actions
 
@@ -121,6 +125,11 @@ def generate_launch_description():
             'enable_heightmap',
             default_value='true',
             description='Launch the heightmap, rail detector, and rail follower nodes',
+        ),
+        DeclareLaunchArgument(
+            'use_rl_deploy_controller',
+            default_value='true',
+            description='Launch lite3_sdk_deploy rl_deploy to convert /cmd_vel into joint commands',
         ),
         DeclareLaunchArgument(
             'follow_mode',
