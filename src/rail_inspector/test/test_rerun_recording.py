@@ -27,7 +27,7 @@ USE_RECORDING_PATH = None
 
 
 @pytest.fixture(scope="module")
-def recording_path(tmp_path_factory, follow_distance):
+def recording_path(tmp_path_factory, follow_distance, headless):
     if USE_RECORDING_PATH is not None:
         return Path(USE_RECORDING_PATH)
 
@@ -38,9 +38,6 @@ def recording_path(tmp_path_factory, follow_distance):
     for p in (rrd_path, video_path):
         if p.exists():
             p.unlink()
-
-    headless_str = str(artefacts_params.get('headless', 'false')).strip().lower()
-    headless = headless_str in ('true', '1', 'yes', 'on')
 
     sim_config = {
         'simulator': 'mujoco',
@@ -53,7 +50,7 @@ def recording_path(tmp_path_factory, follow_distance):
         },
         'rerun': {
             'enabled': True,
-            'spawn': False,
+            'spawn': not headless,
             'save_path': str(rrd_path),
         },
     }

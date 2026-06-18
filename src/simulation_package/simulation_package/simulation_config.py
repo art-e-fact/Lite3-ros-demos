@@ -158,7 +158,10 @@ class SimulationConfig:
 				robot_data = data.setdefault("robot", {})
 				if isinstance(robot_data, dict):
 					robot_data.setdefault("robot_description", data.pop("robot_description"))
-		return _dataclass_from_dict(cls, data or {})
+		config = _dataclass_from_dict(cls, data or {})
+		if config.headless and config.rerun.spawn:
+			return config.with_overrides({"rerun.spawn": False})
+		return config
 
 	def with_overrides(self, overrides: dict[str, Any]) -> "SimulationConfig":
 		data = _dataclass_to_dict(self)
