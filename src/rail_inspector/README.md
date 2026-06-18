@@ -34,6 +34,10 @@ scalar outputs for the follower.
 - `follow_target_sample_step` (`0.10`): distance between follow-target samples
 - `follow_target_min_height` (`0.10`): minimum rise above the detected rail height to count as a target
 - `follow_target_max_height` (`2.2`): maximum plausible rise above the detected rail height
+- `visualize_with_rviz` (`true`): whether to publish RViz debug markers
+- `visualize_with_rerun` (`false`): whether to visualize detector states with Rerun.io
+- `rerun_save_path` (`""`): optional file path to save the Rerun recording (.rrd)
+- `rerun_recording_id` (`""`): optional custom recording ID for Rerun
 
 ### Example
 

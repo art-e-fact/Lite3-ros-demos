@@ -9,7 +9,8 @@ from rclpy.node import Node
 from std_msgs.msg import Float32
 from visualization_msgs.msg import MarkerArray
 
-from rail_inspector.rail_detector_visualization import build_markers
+from rail_inspector.rail_detector_rerun_visualization import log_to_rerun
+from rail_inspector.rail_detector_rviz_visualization import build_markers
 
 
 class RailDetectorNode(Node):
@@ -137,7 +138,43 @@ class RailDetectorNode(Node):
             2.2,
             'Maximum rise above the detected rail height to keep the follow target plausible.',
         ))
+        self.visualize_with_rviz = bool(declare(
+            'visualize_with_rviz',
+            False,
+            'Whether to publish RViz debug markers.',
+        ))
+        self.visualize_with_rerun = bool(declare(
+            'visualize_with_rerun',
+            False,
+            'Whether to visualize detector states with Rerun.io.',
+        ))
+        self.rerun_save_path = str(declare(
+            'rerun_save_path',
+            '',
+            'Optional file path to save the Rerun recording (.rrd).',
+        ))
+        self.rerun_recording_id = str(declare(
+            'rerun_recording_id',
+            '',
+            'Optional custom recording ID for Rerun.',
+        ))
         self.latest_odom = None
+
+        if self.visualize_with_rerun:
+            import rerun as rr
+            rec_id = (
+                self.rerun_recording_id
+                if self.rerun_recording_id
+                else None
+            )
+            rr.init('rail_detector', recording_id=rec_id)
+            if self.rerun_save_path:
+                import os
+                save_path = os.path.abspath(self.rerun_save_path)
+                os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                rr.save(save_path)
+            else:
+                rr.connect_grpc()
 
         self.marker_pub = self.create_publisher(MarkerArray, self.marker_topic, 10)
         self.center_offset_pub = self.create_publisher(Float32, self.center_offset_topic, 10)
@@ -163,14 +200,28 @@ class RailDetectorNode(Node):
             return
 
         detection = self._detect_rails(grid, self.latest_odom)
-        self.marker_pub.publish(
-            build_markers(
-                msg.header.frame_id,
-                msg.header.stamp,
+
+        if self.visualize_with_rviz:
+            self.marker_pub.publish(
+                build_markers(
+                    msg.header.frame_id,
+                    msg.header.stamp,
+                    detection,
+                    max(self.forward_span, self.follow_target_lookahead),
+                )
+            )
+
+        if self.visualize_with_rerun:
+            import rerun as rr
+            stamp_time = msg.header.stamp
+            ns = stamp_time.sec * 1_000_000_000 + stamp_time.nanosec
+            rr.set_time('ros_time', timestamp=np.datetime64(ns, 'ns'))
+            rr.set_time('sim_time', duration=ns / 1e9)
+            log_to_rerun(
                 detection,
                 max(self.forward_span, self.follow_target_lookahead),
             )
-        )
+
         self._publish_detection_scalars(detection)
 
     def _publish_detection_scalars(self, detection):

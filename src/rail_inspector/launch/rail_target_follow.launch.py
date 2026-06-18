@@ -17,6 +17,10 @@ def launch_setup(context, *args, **kwargs):
     k_center = LaunchConfiguration('k_center')
     k_heading = LaunchConfiguration('k_heading')
     stale_timeout_sec = LaunchConfiguration('stale_timeout_sec')
+    visualize_with_rviz = LaunchConfiguration('visualize_with_rviz')
+    visualize_with_rerun = LaunchConfiguration('visualize_with_rerun')
+    rerun_save_path = LaunchConfiguration('rerun_save_path')
+    rerun_recording_id = LaunchConfiguration('rerun_recording_id')
 
     actions = []
 
@@ -56,6 +60,10 @@ def launch_setup(context, *args, **kwargs):
                     'target_distance_topic': '/rail_detector/target_distance',
                     'use_sim_time': use_sim_time,
                     'track_gauge': 1.067,
+                    'visualize_with_rviz': visualize_with_rviz,
+                    'visualize_with_rerun': visualize_with_rerun,
+                    'rerun_save_path': rerun_save_path,
+                    'rerun_recording_id': rerun_recording_id,
                 }],
             ),
             Node(
@@ -166,6 +174,26 @@ def generate_launch_description():
             'stale_timeout_sec',
             default_value='0.5',
             description='Maximum wall-time age accepted for detector and odometry inputs',
+        ),
+        DeclareLaunchArgument(
+            'visualize_with_rviz',
+            default_value='false',
+            description='Whether to publish RViz debug markers',
+        ),
+        DeclareLaunchArgument(
+            'visualize_with_rerun',
+            default_value='false',
+            description='Whether to visualize detector states with Rerun.io',
+        ),
+        DeclareLaunchArgument(
+            'rerun_save_path',
+            default_value='',
+            description='Optional file path to save the Rerun recording (.rrd)',
+        ),
+        DeclareLaunchArgument(
+            'rerun_recording_id',
+            default_value='',
+            description='Optional custom recording ID for Rerun',
         ),
         OpaqueFunction(function=launch_setup),
     ])
