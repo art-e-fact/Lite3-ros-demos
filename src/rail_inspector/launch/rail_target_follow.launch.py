@@ -25,6 +25,7 @@ def launch_setup(context, *args, **kwargs):
     visualize_with_rerun = LaunchConfiguration('visualize_with_rerun')
     rerun_save_path = LaunchConfiguration('rerun_save_path')
     rerun_recording_id = LaunchConfiguration('rerun_recording_id')
+    rerun_connect_grpc_url = LaunchConfiguration('rerun_connect_grpc_url')
     track_gauge = LaunchConfiguration('track_gauge')
     rail_width = LaunchConfiguration('rail_width')
     num_slices = LaunchConfiguration('num_slices')
@@ -75,6 +76,7 @@ def launch_setup(context, *args, **kwargs):
                     'visualize_with_rerun': visualize_with_rerun,
                     'rerun_save_path': rerun_save_path,
                     'rerun_recording_id': rerun_recording_id,
+                    'rerun_connect_grpc_url': rerun_connect_grpc_url,
                 }],
             ),
             Node(
@@ -217,6 +219,11 @@ def generate_launch_description():
             'rerun_recording_id',
             default_value='',
             description='Optional custom recording ID for Rerun',
+        ),
+        DeclareLaunchArgument(
+            'rerun_connect_grpc_url',
+            default_value='',
+            description='Optional gRPC URL for rr.connect_grpc(). Uses the Rerun default when empty.',
         ),
         DeclareLaunchArgument(
             'track_gauge',

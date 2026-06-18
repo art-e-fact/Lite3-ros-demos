@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
-import sys
 from collections.abc import Callable
 
 import numpy as np
@@ -30,6 +28,33 @@ from drdds.msg import JointsData
 class RerunSubscriber(Node):  # type: ignore[misc]
     def __init__(self) -> None:
         super().__init__("rr_turtlebot")
+
+        self.declare_parameter('connect_grpc_url', '')
+        self.declare_parameter('save_path', '')
+        self.declare_parameter('spawn_viewer', False)
+        self.declare_parameter('recording_id', '')
+
+        connect_grpc_url = self.get_parameter('connect_grpc_url').get_parameter_value().string_value
+        save_path = self.get_parameter('save_path').get_parameter_value().string_value
+        spawn_viewer = self.get_parameter('spawn_viewer').get_parameter_value().bool_value
+        recording_id = self.get_parameter('recording_id').get_parameter_value().string_value
+
+        init_kwargs: dict = {}
+        if recording_id:
+            init_kwargs['recording_id'] = recording_id
+        rr.init("lite3_rail", **init_kwargs)
+
+        if connect_grpc_url:
+            if connect_grpc_url == 'auto':
+                rr.connect_grpc()
+            else:
+                rr.connect_grpc(connect_grpc_url)
+
+        if save_path:
+            rr.save(save_path)
+
+        if spawn_viewer:
+            rr.spawn()
 
         # Assorted helpers for data conversions
         self.subscribers: list[rclpy.Subscription] = []
@@ -176,13 +201,7 @@ class RerunSubscriber(Node):  # type: ignore[misc]
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Simple example of a ROS node that republishes to Rerun.")
-    rr.script_add_args(parser)
-    args, unknownargs = parser.parse_known_args()
-    rr.script_setup(args, "rerun_example_ros_node")
-
-    # Any remaining args go to rclpy
-    rclpy.init(args=unknownargs)
+    rclpy.init()
 
     rerun_subscriber = RerunSubscriber()
 

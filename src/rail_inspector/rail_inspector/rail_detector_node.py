@@ -158,6 +158,11 @@ class RailDetectorNode(Node):
             '',
             'Optional custom recording ID for Rerun.',
         ))
+        self.rerun_connect_grpc_url = str(declare(
+            'rerun_connect_grpc_url',
+            '',
+            'Optional gRPC URL for rr.connect_grpc(). Uses the Rerun default if empty.',
+        ))
         self.latest_odom = None
 
         if self.visualize_with_rerun:
@@ -167,14 +172,17 @@ class RailDetectorNode(Node):
                 if self.rerun_recording_id
                 else None
             )
-            rr.init('rail_detector', recording_id=rec_id)
+            rr.init('lite3_rail_detector', recording_id=rec_id)
             if self.rerun_save_path:
                 import os
                 save_path = os.path.abspath(self.rerun_save_path)
                 os.makedirs(os.path.dirname(save_path), exist_ok=True)
                 rr.save(save_path)
             else:
-                rr.connect_grpc()
+                if self.rerun_connect_grpc_url:
+                    rr.connect_grpc(self.rerun_connect_grpc_url)
+                else:
+                    rr.connect_grpc()
 
         self.marker_pub = self.create_publisher(MarkerArray, self.marker_topic, 10)
         self.center_offset_pub = self.create_publisher(Float32, self.center_offset_topic, 10)

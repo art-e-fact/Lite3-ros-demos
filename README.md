@@ -78,3 +78,12 @@ pixi run nav-rail-follow-real
 ```
 This launches [rail_target_follow_real.launch.py](src/rail_inspector/launch/rail_target_follow_real.launch.py)
 
+By default the `follow_mode` is `teleop` which means that the robot waits for a Twist message (on `/follow_rail_speed` by default) to start following the rail
+
+
+Launch a keyboard teleop node. The controller only uses the X linear velocity.
+```
+pixi run rail-follow-teleop
+```
+
+To launch the rerun viewer, you can use `pixi run -e nav rerun` from this repo, or you can install it on the viewer computer independently.

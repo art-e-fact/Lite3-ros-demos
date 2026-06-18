@@ -60,7 +60,7 @@ default-environment = "sim"
 depends-on = ["build"]
 
 [tasks.nav-rail-follow]
-cmd = "ros2 launch rail_inspector rail_target_follow.launch.py enable_heightmap:=true cloud_topic:=/mid360/points follow_distance:=1.5 min_linear_x:=0.35 max_linear_x:=0.45 stale_timeout_sec:=0.75 use_sim_time:=true visualize_with_rerun:=True"
+cmd = "ros2 launch rail_inspector rail_target_follow.launch.py enable_heightmap:=true cloud_topic:=/mid360/points follow_distance:=1.5 min_linear_x:=0.35 max_linear_x:=0.45 stale_timeout_sec:=0.75 use_sim_time:=true visualize_with_rerun:=True rerun_recording_id:=lite3-123"
 default-environment = "nav"
 depends-on = ["build"]
 
@@ -75,7 +75,7 @@ default-environment = "nav"
 depends-on = ["build-nav"]
 
 [tasks.rerun-logger]
-cmd = "ros2 run rerun_logger rerun_logger --ros-args -p use_sim_time:=true"
+cmd = "ros2 run rerun_logger rerun_logger"
 default-environment = "nav"
 depends-on = ["build"]
 
