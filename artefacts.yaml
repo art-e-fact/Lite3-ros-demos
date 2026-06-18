@@ -52,6 +52,10 @@ jobs:
       simulator: mujoco
       
     scenarios:
+      defaults:
+        params:
+          headless: "true"
+          min_distance_to_travel: "10.0"
       settings:
         - name: rerun_recording
           run: "pixi run -e nav-test test-rerun-recording"

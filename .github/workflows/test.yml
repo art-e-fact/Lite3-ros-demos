@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test-task: [test-sim-sensors] # ,test-rerun-recording] # TODO: setup headless running for the rest of the tests
+        test-task: [test-rerun-recording, test-sim-sensors]
 
     steps:
       - name: Checkout repository
