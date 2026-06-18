@@ -63,6 +63,11 @@ cmd = "ros2 launch rail_inspector rail_target_follow.launch.py enable_heightmap:
 default-environment = "nav"
 depends-on = ["build"]
 
+[tasks.rail-follow-teleop]
+cmd = "pixi run -e nav ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=/follow_rail_speed"
+default-environment = "nav"
+depends-on = ["build-nav"]
+
 [tasks.rerun-logger]
 cmd = "ros2 run rerun_logger rerun_logger --ros-args -p use_sim_time:=true"
 default-environment = "nav"
@@ -151,6 +156,7 @@ ros-jazzy-joy = ">=3.3.0,<4"
 ros-jazzy-teleop-twist-joy = ">=2.6.5,<3"
 ros-jazzy-laser-geometry = ">=2.7.2,<3"
 ros-jazzy-image-geometry = ">=4.1.0,<5"
+ros-jazzy-teleop-twist-keyboard = ">=2.4.1,<3"
 
 [feature.test.pypi-dependencies]
 artefacts-toolkit = ">=1.0.0, <2"

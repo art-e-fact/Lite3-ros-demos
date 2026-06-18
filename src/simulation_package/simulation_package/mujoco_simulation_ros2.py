@@ -527,8 +527,6 @@ class MuJoCoSimulationNode(Node):
                     stamp = self._make_sim_stamp(self.timestamp)
                     self._publish_clock(stamp)
 
-                    print(f"Intervals: state={self.state_step_interval}, lidar={self.lidar_step_interval}, mid360={self.mid360_step_interval}, depth={self.depth_step_interval}, follow_camera={self.follow_camera_step_interval}")
-
                     # Sample & Publish Observation
                     if step % self.state_step_interval == 0:
                         self._publish_robot_state(stamp)

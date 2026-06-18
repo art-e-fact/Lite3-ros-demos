@@ -51,11 +51,11 @@ ros2 run rail_inspector rail_detector_node --ros-args \
 ## rail_target_follower_node
 
 The follower consumes detector outputs and odometry, then publishes
-`geometry_msgs/Twist` commands that keep the robot near the rail center while stopping
-at a configured distance from the detected follow target.
+`geometry_msgs/Twist` commands that keep the robot aligned and centered on the rail.
 
-If the rail line becomes invalid, the target disappears, or any input becomes stale,
-the follower publishes a zero `Twist`.
+It supports two control modes, configurable via the `follow_mode` parameter:
+- **`auto`**: The robot automatically follows the rail forward and stops at a configured distance from the detected follow target. If the rail line becomes invalid, the target disappears, or any input becomes stale, the follower publishes a zero `Twist`.
+- **`manual`**: The robot aligns and centers itself on the rail, but its forward/backward speed along the rail is manually controlled by publishing to the `follow_rail_speed` topic. If the manual speed input, the rail line, or any other input becomes stale, the follower publishes a zero `Twist`.
 
 ### Parameters
 
@@ -64,6 +64,8 @@ the follower publishes a zero `Twist`.
 - `center_offset_topic` (`/rail_detector/center_offset`): input signed rail-center offset topic
 - `tangent_yaw_topic` (`/rail_detector/tangent_yaw`): input rail tangent yaw topic
 - `target_distance_topic` (`/rail_detector/target_distance`): input follow-target distance topic
+- `follow_mode` (`"auto"`): control mode, `"auto"` (follows target automatically) or `"manual"` (uses `follow_rail_speed`)
+- `follow_rail_speed_topic` (`/follow_rail_speed`): input `geometry_msgs/Twist` topic for manual forward speed command (only `linear.x` is read)
 - `control_rate_hz` (`15.0`): control loop rate used to publish `cmd_vel`
 - `stale_timeout_sec` (`0.5`): maximum wall-time age accepted for detector and odometry inputs
 - `follow_distance` (`1.5`): desired stop distance to the follow target
@@ -76,10 +78,13 @@ the follower publishes a zero `Twist`.
 - `k_center` (`1.0`): gain that converts rail-center offset into lateral correction speed
 - `k_heading` (`1.2`): gain that converts rail tangent yaw error into angular speed
 
-### Example
+### Examples
+
+#### Automatic Mode (Default)
 
 ```bash
 ros2 run rail_inspector rail_target_follower_node --ros-args \
+  -p follow_mode:=auto \
   -p center_offset_topic:=/rail_detector/center_offset \
   -p tangent_yaw_topic:=/rail_detector/tangent_yaw \
   -p target_distance_topic:=/rail_detector/target_distance \
@@ -87,4 +92,15 @@ ros2 run rail_inspector rail_target_follower_node --ros-args \
   -p min_linear_x:=0.4 \
   -p max_linear_x:=0.55 \
   -p distance_error_for_max_speed:=1.5
+```
+
+#### Manual Mode
+
+```bash
+ros2 run rail_inspector rail_target_follower_node --ros-args \
+  -p follow_mode:=manual \
+  -p center_offset_topic:=/rail_detector/center_offset \
+  -p tangent_yaw_topic:=/rail_detector/tangent_yaw \
+  -p follow_rail_speed_topic:=/follow_rail_speed \
+  -p max_linear_x:=0.55
 ```

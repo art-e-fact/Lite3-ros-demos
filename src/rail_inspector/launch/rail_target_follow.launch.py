@@ -8,6 +8,7 @@ def launch_setup(context, *args, **kwargs):
     enable_heightmap = LaunchConfiguration('enable_heightmap').perform(context).strip().lower() == 'true'
     cloud_topic = LaunchConfiguration('cloud_topic').perform(context).strip()
     use_sim_time = LaunchConfiguration('use_sim_time')
+    follow_mode = LaunchConfiguration('follow_mode')
     follow_distance = LaunchConfiguration('follow_distance')
     min_linear_x = LaunchConfiguration('min_linear_x')
     max_linear_x = LaunchConfiguration('max_linear_x')
@@ -87,6 +88,7 @@ def launch_setup(context, *args, **kwargs):
                     'k_center': k_center,
                     'k_heading': k_heading,
                     'stale_timeout_sec': stale_timeout_sec,
+                    'follow_mode': follow_mode,
                 }],
             ),
         ])
@@ -119,6 +121,11 @@ def generate_launch_description():
             'enable_heightmap',
             default_value='true',
             description='Launch the heightmap, rail detector, and rail follower nodes',
+        ),
+        DeclareLaunchArgument(
+            'follow_mode',
+            default_value='auto',
+            description='Control mode: "auto" (follows target automatically) or "teleop" (uses follow_rail_speed)',
         ),
         DeclareLaunchArgument(
             'cloud_topic',
