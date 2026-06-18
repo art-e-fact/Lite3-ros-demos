@@ -70,3 +70,11 @@ Or without spawning the viewer window:
 ```bash
 pixi run rerun-logger --headless
 ```
+
+
+## Notes for testing in real
+```
+pixi run nav-rail-follow-real
+```
+This launches [rail_target_follow_real.launch.py](src/rail_inspector/launch/rail_target_follow_real.launch.py)
+

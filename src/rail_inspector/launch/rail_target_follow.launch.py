@@ -25,6 +25,10 @@ def launch_setup(context, *args, **kwargs):
     visualize_with_rerun = LaunchConfiguration('visualize_with_rerun')
     rerun_save_path = LaunchConfiguration('rerun_save_path')
     rerun_recording_id = LaunchConfiguration('rerun_recording_id')
+    track_gauge = LaunchConfiguration('track_gauge')
+    rail_width = LaunchConfiguration('rail_width')
+    num_slices = LaunchConfiguration('num_slices')
+    lateral_search_width = LaunchConfiguration('lateral_search_width')
 
     actions = []
 
@@ -63,7 +67,10 @@ def launch_setup(context, *args, **kwargs):
                     'tangent_yaw_topic': '/rail_detector/tangent_yaw',
                     'target_distance_topic': '/rail_detector/target_distance',
                     'use_sim_time': use_sim_time,
-                    'track_gauge': 1.067,
+                    'track_gauge': track_gauge,
+                    'rail_width': rail_width,
+                    'num_slices': num_slices,
+                    'lateral_search_width': lateral_search_width,
                     'visualize_with_rviz': visualize_with_rviz,
                     'visualize_with_rerun': visualize_with_rerun,
                     'rerun_save_path': rerun_save_path,
@@ -210,6 +217,26 @@ def generate_launch_description():
             'rerun_recording_id',
             default_value='',
             description='Optional custom recording ID for Rerun',
+        ),
+        DeclareLaunchArgument(
+            'track_gauge',
+            default_value='1.067',
+            description='Expected distance between the two rails in meters',
+        ),
+        DeclareLaunchArgument(
+            'rail_width',
+            default_value='0.15',
+            description='Expected lateral width of one rail in meters',
+        ),
+        DeclareLaunchArgument(
+            'num_slices',
+            default_value='15',
+            description='Number of cross-sections sampled across the forward span',
+        ),
+        DeclareLaunchArgument(
+            'lateral_search_width',
+            default_value='1.8',
+            description='Half-width of each sampled cross-section in meters',
         ),
         OpaqueFunction(function=launch_setup),
     ])

@@ -11,7 +11,10 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name, ['README.md']),
-        ('share/' + package_name + '/launch', ['launch/rail_target_follow.launch.py']),
+        ('share/' + package_name + '/launch', [
+            'launch/rail_target_follow.launch.py',
+            'launch/rail_target_follow_real.launch.py',
+        ]),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -29,6 +32,7 @@ setup(
             'rail_inspect_controller = rail_inspector.rail_inspect_controller:main',
             'rail_detector_node = rail_inspector.rail_detector_node:main',
             'rail_target_follower_node = rail_inspector.rail_target_follower_node:main',
+            'relay_node = rail_inspector.relay_node:main',
         ],
     },
 )
