@@ -45,6 +45,7 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         self.subscribe("/tf", TFMessage, self.tf_callback)
         self.subscribe("/tf_static", TFMessage, self.tf_callback, latching=True)
         self.subscribe("/mid360/points", PointCloud2, self.scan_callback)
+        self.subscribe("/livox/lidar", PointCloud2, self.scan_callback)
         rr.log_file_from_path(
             file_path=ROBOT_PATH,
             entity_path_prefix="urdf",
