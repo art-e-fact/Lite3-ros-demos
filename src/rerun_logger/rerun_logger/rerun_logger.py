@@ -92,12 +92,6 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         if log_heightmap:
             self.subscribe("/local_heightmap", GridMap, self.local_heightmap_callback)
 
-    def _heartbeat_callback(self) -> None:
-        time = self.get_clock().now()
-        rr.set_time("ros_time", timestamp=np.datetime64(time.nanoseconds, "ns"))
-        rr.log("logger/alive", rr.Scalars(float(self._heartbeat_count)))
-        self._heartbeat_count += 1
-
     def subscribe(
         self, topic: str, msg_type: type, callback: Callable[[rclpy.MsgT], None], latching: bool = False
     ) -> None:
