@@ -83,8 +83,16 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         self.subscribe("/JOINTS_DATA", JointsData, self.joints_callback)
         self.subscribe("/rail_detector/markers", MarkerArray, self.rail_detector_markers_callback)
         self._detector_frame: str | None = None
+        self._heartbeat_count = 0
+        self.create_timer(1.0, self._heartbeat_callback)
         if log_heightmap:
             self.subscribe("/local_heightmap", GridMap, self.local_heightmap_callback)
+
+    def _heartbeat_callback(self) -> None:
+        time = self.get_clock().now()
+        rr.set_time("ros_time", timestamp=np.datetime64(time.nanoseconds, "ns"))
+        rr.log("logger/alive", rr.Scalars(float(self._heartbeat_count)))
+        self._heartbeat_count += 1
 
     def subscribe(
         self, topic: str, msg_type: type, callback: Callable[[rclpy.MsgT], None], latching: bool = False
@@ -205,6 +213,9 @@ def main() -> None:
     )
     args, unknownargs = parser.parse_known_args()
     rr.script_setup(args, "lite3_rail")
+
+    # Start gRPC server so a remote viewer can connect
+    rr.serve_grpc(grpc_port=9876) #, default_blueprint=None)
 
     rclpy.init(args=unknownargs)
 
