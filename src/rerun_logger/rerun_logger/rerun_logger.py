@@ -215,7 +215,7 @@ def main() -> None:
     rr.script_setup(args, "lite3_rail")
 
     # Start gRPC server so a remote viewer can connect
-    rr.serve_grpc(grpc_port=9876) #, default_blueprint=None)
+    rr.serve_grpc(grpc_port=9876)
 
     rclpy.init(args=unknownargs)
 
