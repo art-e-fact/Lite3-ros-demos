@@ -21,6 +21,7 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile
 from rclpy.time import Time
 from grid_map_msgs.msg import GridMap
 from sensor_msgs.msg import JointState, PointCloud2
+from std_msgs.msg import Float32
 from sensor_msgs_py import point_cloud2
 from tf2_msgs.msg import TFMessage
 from visualization_msgs.msg import MarkerArray
@@ -83,6 +84,7 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         self.subscribe("/JOINTS_DATA", JointsData, self.joints_callback)
         self.subscribe("/joint_states", JointState, self.joint_states_callback)
         self.subscribe("/rail_detector/markers", MarkerArray, self.rail_detector_markers_callback)
+        self.subscribe("/perf/height_scan", Float32, self.height_scan_perf_callback)
         self._detector_frame: str | None = None
         if log_heightmap:
             self.subscribe("/local_heightmap", GridMap, self.local_heightmap_callback)
@@ -174,6 +176,11 @@ class RerunSubscriber(Node):  # type: ignore[misc]
 
     def local_heightmap_callback(self, msg: GridMap) -> None:
         log_local_heightmap(msg, static=self._static_heightmap)
+
+    def height_scan_perf_callback(self, msg: Float32) -> None:
+        time = self.get_clock().now()
+        rr.set_time("ros_time", timestamp=np.datetime64(time.nanoseconds, "ns"))
+        rr.log("perf/height-scan", rr.Scalars(msg.data))
 
     def _log_joint_angles(self, angles_by_name: dict[str, float]) -> None:
         """Logs joint transforms to Rerun given a mapping of joint name -> angle (radians)."""

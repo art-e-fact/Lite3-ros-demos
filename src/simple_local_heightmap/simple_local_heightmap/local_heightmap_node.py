@@ -1,4 +1,5 @@
 import math
+import time
 
 import numpy as np
 import rclpy
@@ -7,7 +8,7 @@ from grid_map_msgs.msg import GridMap
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2
-from std_msgs.msg import Float32MultiArray, MultiArrayDimension
+from std_msgs.msg import Float32, Float32MultiArray, MultiArrayDimension
 from tf2_ros import Buffer, TransformException, TransformListener
 from visualization_msgs.msg import MarkerArray
 
@@ -22,6 +23,7 @@ class LocalHeightmapNode(Node):
         self.odom_topic = self.declare_parameter('odom_topic', '/odom').value
         self.output_topic = self.declare_parameter('heightmap_topic', '/local_heightmap').value
         self.front_clear_marker_topic = '/local_heightmap/front_clear_markers'
+        self.height_scan_perf_topic = '/perf/height_scan'
         self.map_frame = self.declare_parameter('map_frame', 'odom').value
         self.robot_frame = self.declare_parameter('robot_frame', 'base_link').value
         self.resolution = float(self.declare_parameter('resolution', 0.05).value)
@@ -68,6 +70,9 @@ class LocalHeightmapNode(Node):
         self.front_clear_marker_pub = self.create_publisher(
             MarkerArray, self.front_clear_marker_topic, 10
         )
+        self.height_scan_perf_pub = self.create_publisher(
+            Float32, self.height_scan_perf_topic, 10
+        )
         self.create_subscription(PointCloud2, self.cloud_topic, self.cloud_callback, 10)
         self.create_subscription(Odometry, self.odom_topic, self.odom_callback, 10)
 
@@ -92,6 +97,8 @@ class LocalHeightmapNode(Node):
         if self.max_pose_variance > 0.0:
             if self.latest_pose_variance > self.max_pose_variance:
                 return
+
+        t0 = time.perf_counter()
 
         stamp = msg.header.stamp
         scan_time = self._stamp_to_sec(stamp)
@@ -131,6 +138,9 @@ class LocalHeightmapNode(Node):
                 front_clear_area=self._front_clear_area(robot_transform),
             )
         )
+
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+        self.height_scan_perf_pub.publish(Float32(data=elapsed_ms))
 
     def _cloud_to_array(self, msg):
         points = pc2.read_points(msg, field_names=('x', 'y', 'z'), skip_nans=True)
@@ -307,7 +317,7 @@ class LocalHeightmapNode(Node):
             ),
             MultiArrayDimension(label='row_index', size=self.height, stride=self.height),
         ]
-        data.data = np.flip(self.elevation, axis=(0, 1)).reshape(-1).astype(np.float32).tolist()
+        data.data = np.flip(self.elevation, axis=(0, 1)).ravel().astype(np.float32)
         return data
 
     @staticmethod
