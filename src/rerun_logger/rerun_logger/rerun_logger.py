@@ -87,6 +87,8 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         self.subscribe("/rail_detector/markers", MarkerArray, self.rail_detector_markers_callback)
         self.subscribe("/perf/height_scan", Float32, self.height_scan_perf_callback)
         self._detector_frame: str | None = None
+        self._heartbeat_count = 0
+        self.create_timer(1.0, self._heartbeat_callback)
         if log_heightmap:
             self.subscribe("/local_heightmap", GridMap, self.local_heightmap_callback)
 
@@ -182,6 +184,12 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         time = self.get_clock().now()
         rr.set_time("ros_time", timestamp=np.datetime64(time.nanoseconds, "ns"))
         rr.log("perf/height-scan", rr.Scalars(msg.data))
+
+    def _heartbeat_callback(self) -> None:
+        time = self.get_clock().now()
+        rr.set_time("ros_time", timestamp=np.datetime64(time.nanoseconds, "ns"))
+        rr.log("logger/alive", rr.Scalars(float(self._heartbeat_count)))
+        self._heartbeat_count += 1
 
     def _log_joint_angles(self, angles_by_name: dict[str, float]) -> None:
         """Logs joint transforms to Rerun given a mapping of joint name -> angle (radians)."""
