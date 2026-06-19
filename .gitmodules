@@ -4,3 +4,7 @@
 [submodule "src/assets_package/deep_robotics_model"]
 	path = src/assets_package/deep_robotics_model
 	url = https://github.com/DeepRoboticsLab/deep_robotics_model.git
+[submodule "src/livox_ros_driver2"]
+	path = src/livox_ros_driver2
+	url = git@github.com:art-e-fact/livox_ros_driver2.git
+	branch = master
