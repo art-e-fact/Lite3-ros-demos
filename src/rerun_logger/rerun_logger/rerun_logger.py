@@ -20,7 +20,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile
 from rclpy.time import Time
 from grid_map_msgs.msg import GridMap
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import JointState, PointCloud2
 from sensor_msgs_py import point_cloud2
 from tf2_msgs.msg import TFMessage
 from visualization_msgs.msg import MarkerArray
@@ -81,6 +81,7 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         )
 
         self.subscribe("/JOINTS_DATA", JointsData, self.joints_callback)
+        self.subscribe("/joint_states", JointState, self.joint_states_callback)
         self.subscribe("/rail_detector/markers", MarkerArray, self.rail_detector_markers_callback)
         self._detector_frame: str | None = None
         if log_heightmap:
@@ -174,6 +175,13 @@ class RerunSubscriber(Node):  # type: ignore[misc]
     def local_heightmap_callback(self, msg: GridMap) -> None:
         log_local_heightmap(msg, static=self._static_heightmap)
 
+    def _log_joint_angles(self, angles_by_name: dict[str, float]) -> None:
+        """Logs joint transforms to Rerun given a mapping of joint name -> angle (radians)."""
+        for joint in self.urdf_tree.joints():
+            if joint.joint_type == "revolute" and joint.name in angles_by_name:
+                transform = joint.compute_transform(angles_by_name[joint.name], clamp=True)
+                rr.log("transforms", transform)
+
     def joints_callback(self, msg: JointsData) -> None:
         """
         Logs actual joint motions from JointsData to Rerun.
@@ -181,13 +189,26 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         time = Time.from_msg(msg.header.stamp)
         rr.set_time("ros_time", timestamp=np.datetime64(time.nanoseconds, "ns"))
 
-        for joint in self.urdf_tree.joints():
-            if joint.joint_type == "revolute" and joint.name in self.joint_name_to_index:
-                idx = self.joint_name_to_index[joint.name]
-                if idx < len(msg.data.joints_data):
-                    joint_angle = msg.data.joints_data[idx].position
-                    transform = joint.compute_transform(joint_angle, clamp=True)
-                    rr.log("transforms", transform)
+        angles_by_name = {
+            name: msg.data.joints_data[idx].position
+            for name, idx in self.joint_name_to_index.items()
+            if idx < len(msg.data.joints_data)
+        }
+        self._log_joint_angles(angles_by_name)
+
+    def joint_states_callback(self, msg: JointState) -> None:
+        """
+        Logs joint motions from a standard sensor_msgs/JointState message to Rerun.
+        """
+        time = Time.from_msg(msg.header.stamp)
+        rr.set_time("ros_time", timestamp=np.datetime64(time.nanoseconds, "ns"))
+
+        angles_by_name = {
+            name: pos
+            for name, pos in zip(msg.name, msg.position)
+            if name in self.joint_name_to_index
+        }
+        self._log_joint_angles(angles_by_name)
 
 
 def main() -> None:
