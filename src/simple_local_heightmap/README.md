@@ -11,16 +11,72 @@ The local heightmap keeps one elevation value per grid cell and ages out cells u
 time since they were last observed. To clear transient hits faster in front of the robot,
 the node can apply a shorter timeout inside a rectangle defined in the robot frame.
 
+### Subscribed topics
+
+| Topic | Type | Description |
+|-------|------|-------------|
+| `cloud_topic` (default `/mid360/points`) | `sensor_msgs/PointCloud2` | Input point cloud |
+| `odom_topic` (default `/odom`) | `nav_msgs/Odometry` | Used for pose-covariance gating |
+
+### Published topics
+
+| Topic | Type | Description |
+|-------|------|-------------|
+| `heightmap_topic` (default `/local_heightmap`) | `grid_map_msgs/GridMap` | Elevation map output |
+| `debug_cloud_topic` (default `/local_heightmap/debug_points`) | `sensor_msgs/PointCloud2` | Valid cells as a point cloud |
+| `/local_heightmap/front_clear_markers` | `visualization_msgs/MarkerArray` | Visualises the fast-clear rectangle |
+
 ### Parameters
 
-- `cloud_topic` (`/mid360/points`): `sensor_msgs/PointCloud2` topic used as the heightmap input cloud
-- `odom_topic` (`/odom`): `nav_msgs/Odometry` topic used for pose covariance gating
-- `stale_time_sec` (`1.0`): default timeout used outside the front fast-clear rectangle
-- `front_clear_enabled` (`false`): enables a robot-frame rectangle with a shorter timeout
-- `front_clear_length` (`3.5`): length of the fast-clear rectangle in meters
-- `front_clear_width` (`1.0`): width of the fast-clear rectangle in meters
-- `front_clear_offset_x` (`0.25`): forward offset from the robot origin to the start of the rectangle
-- `front_stale_time_sec` (`0.75`): timeout used for cells inside the fast-clear rectangle
+#### Input / output
 
-The front-clear overlay is published on `/local_heightmap/front_clear_markers` as a
-`visualization_msgs/MarkerArray` for RViz debugging.
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `cloud_topic` | `/mid360/points` | Input `PointCloud2` topic |
+| `odom_topic` | `/odom` | Odometry topic for pose-covariance gating |
+| `heightmap_topic` | `/local_heightmap` | Output `GridMap` topic |
+| `debug_cloud_topic` | `/local_heightmap/debug_points` | Debug point cloud topic |
+
+#### Coordinate frames
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `map_frame` | `odom` | Fixed frame for the output map |
+| `robot_frame` | `base_link` | Robot body frame (used for grid centering and fast-clear) |
+
+#### Map geometry
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `resolution` | `0.05` | Cell size in metres |
+| `length_x` | `3.0` | Map extent along X (metres); snapped to whole cells |
+| `length_y` | `3.0` | Map extent along Y (metres); snapped to whole cells |
+
+#### Point-cloud filtering
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `min_z` | `-1.0` | Reject points below this height (metres, map frame) |
+| `max_z` | `2.0` | Reject points above this height (metres, map frame) |
+| `min_range` | `0.1` | Reject points closer than this range (metres, sensor frame) |
+| `max_range` | `12.0` | Reject points farther than this range (metres, sensor frame) |
+
+#### Cell ageing
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `stale_time_sec` | `100.0` | Seconds before a cell is expired outside the fast-clear zone; `0` disables |
+| `max_pose_variance` | `0.0` | Drop scans when the maximum diagonal covariance from odometry exceeds this value; `0` disables |
+
+#### Front fast-clear rectangle
+
+A robot-frame rectangle immediately ahead of the robot can be given a much shorter
+expiry so transient obstacles (e.g. the robot's own legs) are cleared quickly.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `front_clear_enabled` | `false` | Enable the fast-clear zone |
+| `front_clear_length` | `2.5` | Length of the rectangle (metres, robot X axis) |
+| `front_clear_width` | `1.0` | Width of the rectangle (metres, robot Y axis) |
+| `front_clear_offset_x` | `0.75` | Forward offset from the robot origin to the near edge of the rectangle (metres) |
+| `front_stale_time_sec` | `0.35` | Expiry timeout inside the fast-clear rectangle |

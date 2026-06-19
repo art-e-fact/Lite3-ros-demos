@@ -19,19 +19,22 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile
 from rclpy.time import Time
+from grid_map_msgs.msg import GridMap
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2
 from tf2_msgs.msg import TFMessage
 from visualization_msgs.msg import MarkerArray
 from drdds.msg import JointsData
 
+from rerun_logger.local_heightmap_rerun import log_local_heightmap
 from rerun_logger.rail_detector_rerun import log_rail_detector_markers
 
 
 
 class RerunSubscriber(Node):  # type: ignore[misc]
-    def __init__(self) -> None:
+    def __init__(self, *, log_heightmap: bool = False, static_heightmap: bool = False) -> None:
         super().__init__("rr_turtlebot")
+        self._static_heightmap = static_heightmap
 
         # Assorted helpers for data conversions
         self.subscribers: list[rclpy.Subscription] = []
@@ -80,6 +83,8 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         self.subscribe("/JOINTS_DATA", JointsData, self.joints_callback)
         self.subscribe("/rail_detector/markers", MarkerArray, self.rail_detector_markers_callback)
         self._detector_frame: str | None = None
+        if log_heightmap:
+            self.subscribe("/local_heightmap", GridMap, self.local_heightmap_callback)
 
     def subscribe(
         self, topic: str, msg_type: type, callback: Callable[[rclpy.MsgT], None], latching: bool = False
@@ -166,6 +171,9 @@ class RerunSubscriber(Node):  # type: ignore[misc]
     def rail_detector_markers_callback(self, msg: MarkerArray) -> None:
         self._detector_frame = log_rail_detector_markers(msg, self._detector_frame)
 
+    def local_heightmap_callback(self, msg: GridMap) -> None:
+        log_local_heightmap(msg, static=self._static_heightmap)
+
     def joints_callback(self, msg: JointsData) -> None:
         """
         Logs actual joint motions from JointsData to Rerun.
@@ -185,12 +193,25 @@ class RerunSubscriber(Node):  # type: ignore[misc]
 def main() -> None:
     parser = argparse.ArgumentParser(description="Rerun logger for the Lite3 rail demo.")
     rr.script_add_args(parser)
+    parser.add_argument(
+        "--log_heightmap",
+        action="store_true",
+        help="Subscribe to /local_heightmap and visualise it as Boxes3D (off by default).",
+    )
+    parser.add_argument(
+        "--use_static_heightmap",
+        action="store_true",
+        help="Log the heightmap as a static entity so it is not recorded to the timeline.",
+    )
     args, unknownargs = parser.parse_known_args()
     rr.script_setup(args, "lite3_rail")
 
     rclpy.init(args=unknownargs)
 
-    rerun_subscriber = RerunSubscriber()
+    rerun_subscriber = RerunSubscriber(
+        log_heightmap=args.log_heightmap,
+        static_heightmap=args.use_static_heightmap,
+    )
 
     rclpy.spin(rerun_subscriber)
 
