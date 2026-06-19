@@ -53,6 +53,11 @@ def generate_launch_description():
             default_value='/livox/lidar',
             description='Point cloud topic fed to the local heightmap node',
         ),
+        DeclareLaunchArgument(
+            'odom_topic',
+            default_value='/leg_odom2',
+            description='Odometry topic used by the rail detector and follower nodes',
+        ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(rail_inspector_share, 'launch', 'rail_target_follow.launch.py')
@@ -64,6 +69,7 @@ def generate_launch_description():
                 'lateral_search_width': LaunchConfiguration('lateral_search_width'),
                 'follow_mode': LaunchConfiguration('follow_mode'),
                 'cloud_topic': LaunchConfiguration('cloud_topic'),
+                'odom_topic': LaunchConfiguration('odom_topic'),
                 'use_sim_time': 'false',
             }.items()
         ),

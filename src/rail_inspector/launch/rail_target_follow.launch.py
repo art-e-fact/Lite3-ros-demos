@@ -10,6 +10,7 @@ def launch_setup(context, *args, **kwargs):
         LaunchConfiguration('use_rl_deploy_controller').perform(context).strip().lower() == 'true'
     )
     cloud_topic = LaunchConfiguration('cloud_topic').perform(context).strip()
+    odom_topic = LaunchConfiguration('odom_topic')
     use_sim_time = LaunchConfiguration('use_sim_time')
     follow_mode = LaunchConfiguration('follow_mode')
     follow_distance = LaunchConfiguration('follow_distance')
@@ -57,7 +58,7 @@ def launch_setup(context, *args, **kwargs):
                 output='screen',
                 parameters=[{
                     'heightmap_topic': '/local_heightmap',
-                    'odom_topic': '/odom',
+                    'odom_topic': odom_topic,
                     'marker_topic': '/rail_detector/markers',
                     'center_offset_topic': '/rail_detector/center_offset',
                     'tangent_yaw_topic': '/rail_detector/tangent_yaw',
@@ -76,7 +77,7 @@ def launch_setup(context, *args, **kwargs):
                 output='screen',
                 parameters=[{
                     'cmd_vel_topic': '/cmd_vel',
-                    'odom_topic': '/odom',
+                    'odom_topic': odom_topic,
                     'center_offset_topic': '/rail_detector/center_offset',
                     'tangent_yaw_topic': '/rail_detector/tangent_yaw',
                     'target_distance_topic': '/rail_detector/target_distance',
@@ -139,6 +140,11 @@ def generate_launch_description():
             'cloud_topic',
             default_value='/mid360/points',
             description='Point cloud topic fed to the local heightmap node',
+        ),
+        DeclareLaunchArgument(
+            'odom_topic',
+            default_value='/odom',
+            description='Odometry topic used by the rail detector and follower nodes',
         ),
         DeclareLaunchArgument(
             'use_sim_time',
