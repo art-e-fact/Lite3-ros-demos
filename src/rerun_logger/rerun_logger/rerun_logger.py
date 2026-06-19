@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from collections.abc import Callable
 
 import numpy as np
@@ -21,40 +22,16 @@ from rclpy.time import Time
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2
 from tf2_msgs.msg import TFMessage
+from visualization_msgs.msg import MarkerArray
 from drdds.msg import JointsData
+
+from rerun_logger.rail_detector_rerun import log_rail_detector_markers
 
 
 
 class RerunSubscriber(Node):  # type: ignore[misc]
     def __init__(self) -> None:
         super().__init__("rr_turtlebot")
-
-        self.declare_parameter('connect_grpc_url', '')
-        self.declare_parameter('save_path', '')
-        self.declare_parameter('spawn_viewer', False)
-        self.declare_parameter('recording_id', '')
-
-        connect_grpc_url = self.get_parameter('connect_grpc_url').get_parameter_value().string_value
-        save_path = self.get_parameter('save_path').get_parameter_value().string_value
-        spawn_viewer = self.get_parameter('spawn_viewer').get_parameter_value().bool_value
-        recording_id = self.get_parameter('recording_id').get_parameter_value().string_value
-
-        init_kwargs: dict = {}
-        if recording_id:
-            init_kwargs['recording_id'] = recording_id
-        rr.init("lite3_rail", **init_kwargs)
-
-        if connect_grpc_url:
-            if connect_grpc_url == 'auto':
-                rr.connect_grpc()
-            else:
-                rr.connect_grpc(connect_grpc_url)
-
-        if save_path:
-            rr.save(save_path)
-
-        if spawn_viewer:
-            rr.spawn()
 
         # Assorted helpers for data conversions
         self.subscribers: list[rclpy.Subscription] = []
@@ -101,6 +78,8 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         )
 
         self.subscribe("/JOINTS_DATA", JointsData, self.joints_callback)
+        self.subscribe("/rail_detector/markers", MarkerArray, self.rail_detector_markers_callback)
+        self._detector_frame: str | None = None
 
     def subscribe(
         self, topic: str, msg_type: type, callback: Callable[[rclpy.MsgT], None], latching: bool = False
@@ -184,6 +163,9 @@ class RerunSubscriber(Node):  # type: ignore[misc]
                 # static=True,  # Uncomment this if the transform is static
             )
 
+    def rail_detector_markers_callback(self, msg: MarkerArray) -> None:
+        self._detector_frame = log_rail_detector_markers(msg, self._detector_frame)
+
     def joints_callback(self, msg: JointsData) -> None:
         """
         Logs actual joint motions from JointsData to Rerun.
@@ -201,7 +183,12 @@ class RerunSubscriber(Node):  # type: ignore[misc]
 
 
 def main() -> None:
-    rclpy.init()
+    parser = argparse.ArgumentParser(description="Rerun logger for the Lite3 rail demo.")
+    rr.script_add_args(parser)
+    args, unknownargs = parser.parse_known_args()
+    rr.script_setup(args, "lite3_rail")
+
+    rclpy.init(args=unknownargs)
 
     rerun_subscriber = RerunSubscriber()
 

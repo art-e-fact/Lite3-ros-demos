@@ -44,26 +44,6 @@ def generate_launch_description():
             description='Half-width of each sampled cross-section in meters',
         ),
         DeclareLaunchArgument(
-            'rerun_recording_id',
-            default_value='lite3-123',
-            description='Optional custom recording ID for Rerun',
-        ),
-        DeclareLaunchArgument(
-            'visualize_with_rerun',
-            default_value='true',
-            description='Whether to visualize with Rerun.io (also launches rerun_logger)',
-        ),
-        DeclareLaunchArgument(
-            'rerun_save_path',
-            default_value='',
-            description='Optional file path to save the Rerun recording (.rrd)',
-        ),
-        DeclareLaunchArgument(
-            'rerun_connect_grpc_url',
-            default_value='',
-            description='Optional gRPC URL for rr.connect_grpc(). Uses the Rerun default when empty.',
-        ),
-        DeclareLaunchArgument(
             'follow_mode',
             default_value='teleop',
             description='Control mode: "auto" or "teleop"',
@@ -82,10 +62,6 @@ def generate_launch_description():
                 'rail_width': LaunchConfiguration('rail_width'),
                 'num_slices': LaunchConfiguration('num_slices'),
                 'lateral_search_width': LaunchConfiguration('lateral_search_width'),
-                'rerun_recording_id': LaunchConfiguration('rerun_recording_id'),
-                'visualize_with_rerun': LaunchConfiguration('visualize_with_rerun'),
-                'rerun_save_path': LaunchConfiguration('rerun_save_path'),
-                'rerun_connect_grpc_url': LaunchConfiguration('rerun_connect_grpc_url'),
                 'follow_mode': LaunchConfiguration('follow_mode'),
                 'cloud_topic': LaunchConfiguration('cloud_topic'),
                 'use_sim_time': 'false',

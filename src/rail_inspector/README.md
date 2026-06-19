@@ -7,8 +7,10 @@ local height map and publish rail-following control signals.
 
 The detector consumes a `grid_map_msgs/GridMap` elevation map and odometry. It samples
 multiple lateral slices around the robot, pairs rail-like height groups using the
-configured track gauge, fits a short rail centerline, and publishes RViz markers plus
-scalar outputs for the follower.
+configured track gauge, fits a short rail centerline, and always publishes RViz
+`MarkerArray` debug markers as well as scalar outputs for the follower.  Rerun
+visualization is handled by the separate `rerun_logger` node, which subscribes to
+`/rail_detector/markers` and converts them into Rerun entities.
 
 ### Parameters
 
@@ -34,10 +36,6 @@ scalar outputs for the follower.
 - `follow_target_sample_step` (`0.10`): distance between follow-target samples
 - `follow_target_min_height` (`0.10`): minimum rise above the detected rail height to count as a target
 - `follow_target_max_height` (`2.2`): maximum plausible rise above the detected rail height
-- `visualize_with_rviz` (`true`): whether to publish RViz debug markers
-- `visualize_with_rerun` (`false`): whether to visualize detector states with Rerun.io
-- `rerun_save_path` (`""`): optional file path to save the Rerun recording (.rrd)
-- `rerun_recording_id` (`""`): optional custom recording ID for Rerun
 
 ### Example
 
