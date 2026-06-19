@@ -10,7 +10,12 @@ from launch_ros.actions import Node
 def generate_launch_description():
     rail_inspector_share = get_package_share_directory('rail_inspector')
 
+    livox_pkg = get_package_share_directory("livox_ros_driver2")
+
     return LaunchDescription([
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource([f"{livox_pkg}/launch_ROS2/msg_MID360s_launch.py"]),
+        ),   
         Node(
             package='rail_inspector',
             executable='relay_node',
@@ -25,12 +30,12 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'track_gauge',
-            default_value='0.9',
+            default_value='0.54',
             description='Expected distance between the two rails in meters',
         ),
         DeclareLaunchArgument(
             'rail_width',
-            default_value='0.06',
+            default_value='0.028',
             description='Expected lateral width of one rail in meters',
         ),
         DeclareLaunchArgument(
@@ -40,7 +45,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'lateral_search_width',
-            default_value='0.7',
+            default_value='0.6',
             description='Half-width of each sampled cross-section in meters',
         ),
         DeclareLaunchArgument(
@@ -71,6 +76,7 @@ def generate_launch_description():
                 'cloud_topic': LaunchConfiguration('cloud_topic'),
                 'odom_topic': LaunchConfiguration('odom_topic'),
                 'use_sim_time': 'false',
+                'use_rl_deploy_controller': 'false'
             }.items()
         ),
     ])
