@@ -42,7 +42,7 @@ def log_rail_detector_markers(msg: MarkerArray, detector_frame: str | None) -> s
     if stamp is None:
         # Message contained only a DELETEALL — clear all detector paths.
         for path in [
-            'detector/slice_profiles', 'detector/rail_hits',
+            'detector/slice_profiles', 'detector/slice_baselines', 'detector/rail_hits',
             'detector/center_samples', 'detector/follow_target_candidates',
             'detector/follow_target', 'detector/centerline',
             'detector/summary',
@@ -58,7 +58,7 @@ def log_rail_detector_markers(msg: MarkerArray, detector_frame: str | None) -> s
     if frame_id and frame_id != detector_frame:
         detector_frame = frame_id
         for path in [
-            'detector/slice_profiles', 'detector/rail_hits',
+            'detector/slice_profiles', 'detector/slice_baselines', 'detector/rail_hits',
             'detector/center_samples', 'detector/follow_target_candidates',
             'detector/follow_target', 'detector/centerline',
             'detector/summary',
@@ -75,6 +75,19 @@ def log_rail_detector_markers(msg: MarkerArray, detector_frame: str | None) -> s
         rr.log('detector/slice_profiles', rr.LineStrips3D(strips, radii=0.0075, colors=[[51, 178, 255, 191]]))
     else:
         rr.log('detector/slice_profiles', [])
+
+    baseline_strips = [
+        [[p.x, p.y, p.z] for p in m.points]
+        for m in ns_markers.get('slice_baselines', [])
+        if m.points
+    ]
+    if baseline_strips:
+        rr.log(
+            'detector/slice_baselines',
+            rr.LineStrips3D(baseline_strips, radii=0.0075, colors=[[255, 255, 166, 191]]),
+        )
+    else:
+        rr.log('detector/slice_baselines', [])
 
     # Rail hits (single SPHERE_LIST marker)
     hits_markers = ns_markers.get('rail_hits', [])

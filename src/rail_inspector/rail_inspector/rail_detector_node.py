@@ -267,6 +267,7 @@ class RailDetectorNode(Node):
             slice_result = {
                 'xy': xy,
                 'z': z,
+                'baseline': baseline,
                 'left': None,
                 'right': None,
                 'midpoint': None,

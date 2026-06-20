@@ -10,7 +10,9 @@ def build_markers(frame_id, stamp, detection, forward_span):
     msg = MarkerArray()
     msg.markers.append(_delete_all_marker(frame_id, stamp))
 
-    for index, slice_result in enumerate(detection['slices']):
+    slices = detection['slices']
+
+    for index, slice_result in enumerate(slices):
         marker = Marker()
         marker.header.frame_id = frame_id
         marker.header.stamp = stamp
@@ -30,6 +32,22 @@ def build_markers(frame_id, stamp, detection, forward_span):
         ]
         if marker.points:
             msg.markers.append(marker)
+
+        baseline = float(slice_result['baseline'])
+        xy = slice_result['xy']
+        if math.isfinite(baseline) and len(xy) >= 2:
+            msg.markers.append(
+                _line_marker(
+                    frame_id,
+                    stamp,
+                    namespace='slice_baselines',
+                    marker_id=index,
+                    start=np.array([xy[0, 0], xy[0, 1], baseline + 0.005], dtype=np.float32),
+                    end=np.array([xy[-1, 0], xy[-1, 1], baseline + 0.005], dtype=np.float32),
+                    rgb=(1.0, 1.0, 0.65),
+                    width=0.015,
+                )
+            )
 
     if len(detection['hits']) != 0:
         msg.markers.append(
