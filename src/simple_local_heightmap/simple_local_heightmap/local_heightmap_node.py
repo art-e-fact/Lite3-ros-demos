@@ -1,5 +1,6 @@
 import math
 import time
+from array import array
 
 import numpy as np
 import rclpy
@@ -53,6 +54,9 @@ class LocalHeightmapNode(Node):
             self.declare_parameter('max_pose_variance', 0.0).value
         )
 
+        self._min_range_sq = self.min_range ** 2
+        self._max_range_sq = self.max_range ** 2
+
         self.width = max(1, int(round(self.length_x / self.resolution)))
         self.height = max(1, int(round(self.length_y / self.resolution)))
         self.length_x = self.width * self.resolution
@@ -60,6 +64,9 @@ class LocalHeightmapNode(Node):
         self.latest_pose_variance = 0.0
         self.center_x = None
         self.center_y = None
+        self._front_clear_grid_center = (None, None)
+        self._front_clear_xs = None
+        self._front_clear_ys = None
         self.elevation = np.full((self.height, self.width), np.nan, dtype=np.float32)
         self.valid = np.zeros((self.height, self.width), dtype=bool)
         self.last_seen = np.full((self.height, self.width), -np.inf, dtype=np.float64)
@@ -149,11 +156,8 @@ class LocalHeightmapNode(Node):
         return np.asarray(list(points), dtype=np.float32).reshape(-1, 3)
 
     def _filter_points_by_range(self, points):
-        ranges = np.linalg.norm(points, axis=1)
-        valid = (
-            (ranges >= self.min_range)
-            & (ranges <= self.max_range)
-        )
+        r2 = np.einsum('ij,ij->i', points, points)
+        valid = (r2 >= self._min_range_sq) & (r2 <= self._max_range_sq)
         return points[valid]
 
     def _filter_points_by_height(self, points):
@@ -173,11 +177,17 @@ class LocalHeightmapNode(Node):
         if len(zs) == 0:
             return heightmap
 
-        # Median per cell keeps one robust surface estimate from each scan.
+        # Vectorized group-median: sort by (cell, z) then index the middle element(s).
         linear = rows * self.width + cols
-        unique_cells, inverse = np.unique(linear, return_inverse=True)
-        for index, cell in enumerate(unique_cells):
-            heightmap.flat[cell] = np.median(zs[inverse == index])
+        order = np.lexsort((zs, linear))
+        linear_s = linear[order]
+        zs_s = zs[order]
+        cells, starts, counts = np.unique(linear_s, return_index=True, return_counts=True)
+        mid = starts + counts // 2
+        medians = zs_s[mid].astype(np.float32)
+        even = (counts % 2) == 0
+        medians[even] = 0.5 * (zs_s[mid[even]] + zs_s[mid[even] - 1])
+        heightmap.flat[cells] = medians
         return heightmap
 
     def _fuse_scan(self, scan_heightmap, scan_time):
@@ -216,9 +226,12 @@ class LocalHeightmapNode(Node):
             return None
 
         x_min, y_min = self._grid_min_corner()
-        cols = x_min + (np.arange(self.width, dtype=np.float32) + 0.5) * self.resolution
-        rows = y_min + (np.arange(self.height, dtype=np.float32) + 0.5) * self.resolution
-        xs, ys = np.meshgrid(cols, rows)
+        if self._front_clear_grid_center != (self.center_x, self.center_y):
+            cols = x_min + (np.arange(self.width, dtype=np.float32) + 0.5) * self.resolution
+            rows = y_min + (np.arange(self.height, dtype=np.float32) + 0.5) * self.resolution
+            self._front_clear_xs, self._front_clear_ys = np.meshgrid(cols, rows)
+            self._front_clear_grid_center = (self.center_x, self.center_y)
+        xs, ys = self._front_clear_xs, self._front_clear_ys
 
         translation = robot_transform.transform.translation
         rotation = robot_transform.transform.rotation
@@ -317,7 +330,7 @@ class LocalHeightmapNode(Node):
             ),
             MultiArrayDimension(label='row_index', size=self.height, stride=self.height),
         ]
-        data.data = np.flip(self.elevation, axis=(0, 1)).ravel().astype(np.float32)
+        data.data = array('f', np.flip(self.elevation, axis=(0, 1)).ravel())
         return data
 
     @staticmethod
@@ -332,7 +345,7 @@ class LocalHeightmapNode(Node):
             rotation.x, rotation.y, rotation.z, rotation.w
         )
         offset = np.array([translation.x, translation.y, translation.z], dtype=np.float32)
-        return (rot @ points.T).T + offset
+        return points @ rot.T + offset
 
     @staticmethod
     def _quaternion_matrix(x, y, z, w):
