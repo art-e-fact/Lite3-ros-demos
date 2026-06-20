@@ -18,12 +18,22 @@ build = [
 [tasks.setup]
 cmd = "git submodule update --init --recursive"
 
+# HACK: skip building livox_ros_driver2 when we're not on real hardware.
+[tasks.ignore-livox-ros-driver2]
+cmd = "true"
+
+[target.linux-64.tasks.ignore-livox-ros-driver2]
+cmd = "touch src/livox_ros_driver2/COLCON_IGNORE"
+
+[target.osx-arm64.tasks.ignore-livox-ros-driver2]
+cmd = "touch src/livox_ros_driver2/COLCON_IGNORE"
+
 [tasks.build-nav]
 cmd = "colcon build --symlink-install --build-base rosbuild/nav/build --install-base rosbuild/nav/install --test-result-base rosbuild/nav/test_results --packages-skip simulation_package --cmake-args -DROS_EDITION=ROS2 -DDISTRO_ROS=jazzy -DBUILD_TESTING=OFF"
 inputs = ["src"]
 outputs = ["rosbuild/nav/install"]
 default-environment = "nav"
-depends-on = ["setup"]
+depends-on = ["setup", "ignore-livox-ros-driver2"]
 
 [tasks.build-sim]
 cmd = "colcon build --build-base rosbuild/sim/build --install-base rosbuild/sim/install --test-result-base rosbuild/sim/test_results --packages-select simulation_package drdds"
