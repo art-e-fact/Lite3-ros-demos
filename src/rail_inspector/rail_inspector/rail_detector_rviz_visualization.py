@@ -5,7 +5,7 @@ from geometry_msgs.msg import Point
 from visualization_msgs.msg import Marker, MarkerArray
 
 
-def build_markers(frame_id, stamp, detection, forward_span):
+def build_markers(frame_id, stamp, detection, backward_span, forward_span):
     """Build RViz markers for slice samples, rail hits, the centerline, and follow targets."""
     msg = MarkerArray()
     msg.markers.append(_delete_all_marker(frame_id, stamp))
@@ -112,7 +112,7 @@ def build_markers(frame_id, stamp, detection, forward_span):
     )
     if detection['line'] is not None:
         line = detection['line']
-        start = line['center'] - 0.8 * forward_span * line['tangent']
+        start = line['center'] - 0.8 * backward_span * line['tangent']
         end = line['center'] + 0.8 * forward_span * line['tangent']
         msg.markers.append(
             _line_marker(

@@ -75,12 +75,12 @@ default-environment = "nav"
 depends-on = ["build-nav"]
 
 [tasks.nav-rail-follow-real]
-cmd = "ros2 launch rail_inspector rail_target_follow_real.launch.py"
+cmd = "ros2 launch rail_inspector rail_target_follow_real.launch.py track_gauge:=0.9 rail_width:=0.03 forward_span:=5.0 lateral_search_width:=0.7"
 default-environment = "nav"
 depends-on = ["build-nav"]
 
 [tasks.nav-rail-follow-real-auto]
-cmd = "ros2 launch rail_inspector rail_target_follow_real.launch.py follow_mode:=auto"
+cmd = "ros2 launch rail_inspector rail_target_follow_real.launch.py track_gauge:=0.9 rail_width:=0.03 forward_span:=5.0 lateral_search_width:=0.7 follow_mode:=auto"
 default-environment = "nav"
 depends-on = ["build-nav"]
 

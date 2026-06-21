@@ -39,9 +39,19 @@ def generate_launch_description():
             description='Expected lateral width of one rail in meters',
         ),
         DeclareLaunchArgument(
+            'forward_span',
+            default_value='2.6',
+            description='Forward distance ahead of the robot covered by the sampled rail slices',
+        ),
+        DeclareLaunchArgument(
+            'backward_span',
+            default_value='0.0',
+            description='Backward distance behind the robot covered by the sampled rail slices',
+        ),
+        DeclareLaunchArgument(
             'num_slices',
             default_value='30',
-            description='Number of cross-sections sampled across the forward span',
+            description='Number of cross-sections sampled from backward_span behind to forward_span ahead',
         ),
         DeclareLaunchArgument(
             'lateral_search_width',
@@ -72,6 +82,8 @@ def generate_launch_description():
                 'rail_width': LaunchConfiguration('rail_width'),
                 'num_slices': LaunchConfiguration('num_slices'),
                 'lateral_search_width': LaunchConfiguration('lateral_search_width'),
+                'forward_span': LaunchConfiguration('forward_span'),
+                'backward_span': LaunchConfiguration('backward_span'),
                 'follow_mode': LaunchConfiguration('follow_mode'),
                 'cloud_topic': LaunchConfiguration('cloud_topic'),
                 'odom_topic': LaunchConfiguration('odom_topic'),

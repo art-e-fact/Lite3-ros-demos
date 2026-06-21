@@ -29,8 +29,9 @@ subscribes to `/rail_detector/markers` and converts them into Rerun entities.
 - `min_rail_height` (`0.05`): minimum height above the local baseline to accept a rail hit
 - `max_rail_height` (`0.30`): maximum height above the local baseline to accept a rail hit
 - `max_rail_height_difference` (`0.08`): maximum height mismatch between left and right rails
-- `forward_span` (`2.6`): total span covered by the sampled rail slices
-- `num_slices` (`15`): number of cross-sections sampled across the forward span
+- `forward_span` (`2.6`): forward distance ahead of the robot covered by the sampled rail slices
+- `backward_span` (`0.0`): backward distance behind the robot covered by the sampled rail slices
+- `num_slices` (`15`): number of cross-sections sampled from `backward_span` behind to `forward_span` ahead
 - `lateral_search_width` (`1.8`): half-width of each sampled cross-section in meters
 - `follow_target_lookahead` (`8.0`): forward distance checked for a follow target
 - `follow_target_kernel_size` (`0.35`): width of the center sample window used to measure the target

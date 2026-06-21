@@ -26,6 +26,8 @@ def launch_setup(context, *args, **kwargs):
     rail_width = LaunchConfiguration('rail_width')
     num_slices = LaunchConfiguration('num_slices')
     lateral_search_width = LaunchConfiguration('lateral_search_width')
+    forward_span = LaunchConfiguration('forward_span')
+    backward_span = LaunchConfiguration('backward_span')
 
     actions = []
 
@@ -42,9 +44,9 @@ def launch_setup(context, *args, **kwargs):
                     'robot_frame': 'base_link',
                     'use_sim_time': use_sim_time,
                     'resolution': 0.025,
-                    'length_x': 8.0, #3.0, #8.0,
-                    'length_y': 8.0, #3.0, #8.0,
-                    'front_clear_enabled': True, #False, #True,
+                    'length_x': 8.0,
+                    'length_y': 8.0,
+                    'front_clear_enabled': False,
                     'front_clear_length': 2.5,
                     'front_clear_width': 1.0,
                     'front_clear_offset_x': 0.25,
@@ -71,12 +73,14 @@ def launch_setup(context, *args, **kwargs):
                     'num_slices': num_slices,
                     'lateral_search_width': lateral_search_width,
                     # 'max_rail_height_difference':0.08, #0.02,  #0.12,
-                    'forward_span': 5.0, #3.5,
+                    # 'forward_span': 5.0, #3.5,
                     # 'max_rail_height': 0.2,
                     # 'gauge_tolerance':0.01,
                     'angle_sweep_deg': 0.0,
                     'follow_target_lookahead': 2.0,
                     # 'follow_target_sample_step': 0.05,
+                    'forward_span': forward_span,
+                    'backward_span': backward_span,
                 }],
             ),
             Node(
@@ -216,9 +220,19 @@ def generate_launch_description():
             description='Expected lateral width of one rail in meters',
         ),
         DeclareLaunchArgument(
+            'forward_span',
+            default_value='2.6',
+            description='Forward distance ahead of the robot covered by the sampled rail slices',
+        ),
+        DeclareLaunchArgument(
+            'backward_span',
+            default_value='0.0',
+            description='Backward distance behind the robot covered by the sampled rail slices',
+        ),
+        DeclareLaunchArgument(
             'num_slices',
             default_value='15',
-            description='Number of cross-sections sampled across the forward span',
+            description='Number of cross-sections sampled from backward_span behind to forward_span ahead',
         ),
         DeclareLaunchArgument(
             'lateral_search_width',
