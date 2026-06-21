@@ -30,12 +30,12 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'track_gauge',
-            default_value='0.54',
+            default_value='0.9', #'0.75',  #'0.87', #'0.75', #'0.54',
             description='Expected distance between the two rails in meters',
         ),
         DeclareLaunchArgument(
             'rail_width',
-            default_value='0.028',
+            default_value='0.03', #'0.014', #'0.028',
             description='Expected lateral width of one rail in meters',
         ),
         DeclareLaunchArgument(
@@ -45,7 +45,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'lateral_search_width',
-            default_value='0.6',
+            default_value='0.7', #'1.', #'0.6',
             description='Half-width of each sampled cross-section in meters',
         ),
         DeclareLaunchArgument(
@@ -76,7 +76,8 @@ def generate_launch_description():
                 'cloud_topic': LaunchConfiguration('cloud_topic'),
                 'odom_topic': LaunchConfiguration('odom_topic'),
                 'use_sim_time': 'false',
-                'use_rl_deploy_controller': 'false'
+                'use_rl_deploy_controller': 'false',
+                'follow_distance': '0.3',
             }.items()
         ),
     ])
