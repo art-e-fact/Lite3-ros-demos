@@ -73,6 +73,11 @@ def generate_launch_description():
             default_value='/leg_odom2',
             description='Odometry topic used by the rail detector and follower nodes',
         ),
+        DeclareLaunchArgument(
+            'follow_distance',
+            default_value='1.5',
+            description='Desired stand-off distance to the detected target in metres',
+        ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(rail_inspector_share, 'launch', 'rail_target_follow.launch.py')
@@ -89,7 +94,7 @@ def generate_launch_description():
                 'odom_topic': LaunchConfiguration('odom_topic'),
                 'use_sim_time': 'false',
                 'use_rl_deploy_controller': 'false',
-                'follow_distance': '0.3',
+                'follow_distance': LaunchConfiguration('follow_distance'),
             }.items()
         ),
     ])

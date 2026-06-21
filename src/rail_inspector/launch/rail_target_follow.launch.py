@@ -81,6 +81,8 @@ def launch_setup(context, *args, **kwargs):
                     # 'follow_target_sample_step': 0.05,
                     'forward_span': forward_span,
                     'backward_span': backward_span,
+                    'follow_target_min_height': 0.22,
+                    'follow_target_max_height': 0.8
                 }],
             ),
             Node(
