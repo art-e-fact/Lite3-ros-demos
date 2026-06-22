@@ -70,3 +70,7 @@ Or without spawning the viewer window:
 ```bash
 pixi run rerun-logger --headless
 ```
+To visualize heightmaps
+```bash
+pixi run rerun-logger --log_heightmap --use_static_heightmap
+```

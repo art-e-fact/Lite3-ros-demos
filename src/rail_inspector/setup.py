@@ -15,6 +15,10 @@ setup(
             'launch/rail_target_follow.launch.py',
             'launch/rail_target_follow_real.launch.py',
         ]),
+        ('share/' + package_name + '/config', [
+            'config/rail_follow_sim.yaml',
+            'config/rail_follow_office_real.yaml',
+        ]),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

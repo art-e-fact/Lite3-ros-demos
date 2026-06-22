@@ -70,17 +70,17 @@ default-environment = "sim"
 depends-on = ["build"]
 
 [tasks.nav-rail-follow]
-cmd = "ros2 launch rail_inspector rail_target_follow.launch.py enable_heightmap:=true cloud_topic:=/mid360/points follow_distance:=1.5 min_linear_x:=0.35 max_linear_x:=0.45 stale_timeout_sec:=0.75 use_sim_time:=true"
+cmd = "ros2 launch rail_inspector rail_target_follow.launch.py"
 default-environment = "nav"
 depends-on = ["build-nav"]
 
 [tasks.nav-rail-follow-real]
-cmd = "ros2 launch rail_inspector rail_target_follow_real.launch.py track_gauge:=0.9 rail_width:=0.03 forward_span:=5.0 lateral_search_width:=0.7"
+cmd = "ros2 launch rail_inspector rail_target_follow_real.launch.py"
 default-environment = "nav"
 depends-on = ["build-nav"]
 
 [tasks.nav-rail-follow-real-auto]
-cmd = "ros2 launch rail_inspector rail_target_follow_real.launch.py track_gauge:=0.9 rail_width:=0.03 forward_span:=5.0 lateral_search_width:=0.7 follow_distance:=0.4 follow_mode:=auto"
+cmd = "ros2 launch rail_inspector rail_target_follow_real.launch.py follow_mode:=auto"
 default-environment = "nav"
 depends-on = ["build-nav"]
 
