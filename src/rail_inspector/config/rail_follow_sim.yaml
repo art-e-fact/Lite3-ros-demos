@@ -40,6 +40,8 @@ rail_detector_node:
     min_rail_height: 0.05
     max_rail_height: 0.2
     max_rail_height_difference: 0.08  # 0.02, 0.12
+    baseline_auto: true
+    baseline_z: 0.08
     forward_span: 2.6
     backward_span: 0.0
     num_slices: 15

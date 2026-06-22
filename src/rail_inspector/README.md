@@ -26,9 +26,11 @@ subscribes to `/rail_detector/markers` and converts them into Rerun entities.
 - `gauge_tolerance` (`0.40`): maximum rail-pair gauge error allowed in one slice
 - `angle_sweep_deg` (`40.0`): half-range of the center-slice heading search in degrees
 - `angle_step_deg` (`5.0`): heading increment used during the center-slice search
-- `min_rail_height` (`0.05`): minimum height above the local baseline to accept a rail hit
-- `max_rail_height` (`0.30`): maximum height above the local baseline to accept a rail hit
+- `min_rail_height` (`0.05`): minimum height above the baseline (sleeper elevation) to accept a rail hit
+- `max_rail_height` (`0.30`): maximum height above the baseline (sleeper elevation) to accept a rail hit
 - `max_rail_height_difference` (`0.08`): maximum height mismatch between left and right rails
+- `baseline_auto` (`true`): estimate ground height per slice from the height scan
+- `baseline_z` (`0.0`): fixed ground baseline Z in the **odom** frame (same as `/local_heightmap`); used when `baseline_auto` is `false`. `min_rail_height` and `max_rail_height` are offsets above this baseline.
 - `forward_span` (`2.6`): forward distance ahead of the robot covered by the sampled rail slices
 - `backward_span` (`0.0`): backward distance behind the robot covered by the sampled rail slices
 - `num_slices` (`15`): number of cross-sections sampled from `backward_span` behind to `forward_span` ahead
