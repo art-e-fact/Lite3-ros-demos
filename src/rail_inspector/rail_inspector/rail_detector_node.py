@@ -28,6 +28,12 @@ class RailDetectorNode(Node):
             '/local_heightmap',
             'Input GridMap topic with the local elevation layer.',
         )
+        self.heightmap_layout = declare(
+            'heightmap_layout',
+            'flip',
+            'GridMap data layout: "flip" for simple_local_heightmap (legacy flip+C-order), '
+            '"column_major" for elevation_mapping_cupy (standard grid_map Eigen column-major).',
+        )
         self.odom_topic = declare(
             'odom_topic',
             '/odom',
@@ -208,14 +214,21 @@ class RailDetectorNode(Node):
             self.get_logger().warn('GridMap elevation layout is missing dimensions', throttle_duration_sec=2.0)
             return None
 
-        width = int(layer.layout.dim[0].size)
-        height = int(layer.layout.dim[1].size)
+        cols = int(layer.layout.dim[0].size)
+        rows = int(layer.layout.dim[1].size)
         flat = np.asarray(layer.data, dtype=np.float32)
-        if flat.size != width * height:
+        if flat.size != cols * rows:
             self.get_logger().warn('GridMap elevation data size does not match its layout', throttle_duration_sec=2.0)
             return None
 
-        elevation = np.flip(flat.reshape(height, width), axis=(0, 1))
+        if self.heightmap_layout == 'column_major':
+            # Standard grid_map Eigen column-major layout, as published by elevation_mapping_cupy.
+            # dim[0] is column_index (cols), dim[1] is row_index (rows); data is F-order (col-by-col).
+            elevation = flat.reshape((rows, cols), order='F')
+        else:
+            # Legacy simple_local_heightmap layout: data was ravel'd in C-order after a full flip,
+            # so un-flip after a C-order reshape to recover row->+Y, col->+X convention.
+            elevation = np.flip(flat.reshape(rows, cols), axis=(0, 1))
         resolution = float(msg.info.resolution)
         center = np.array([
             float(msg.info.pose.position.x),
@@ -227,8 +240,8 @@ class RailDetectorNode(Node):
             'center': center,
             'length_x': float(msg.info.length_x),
             'length_y': float(msg.info.length_y),
-            'width': width,
-            'height': height,
+            'width': cols,
+            'height': rows,
         }
 
     def _detect_rails(self, grid, odom):

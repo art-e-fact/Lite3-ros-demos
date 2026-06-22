@@ -16,6 +16,7 @@ subscribes to `/rail_detector/markers` and converts them into Rerun entities.
 ### Parameters
 
 - `heightmap_topic` (`/local_heightmap`): input `grid_map_msgs/GridMap`
+- `heightmap_layout` (`flip`): how to decode the GridMap data array; `"flip"` for `simple_local_heightmap` (legacy flip + C-order ravel), `"column_major"` for `elevation_mapping_cupy` (standard grid_map Eigen column-major / F-order)
 - `odom_topic` (`/odom`): input `nav_msgs/Odometry` used for robot position and heading
 - `marker_topic` (`/rail_detector/markers`): output `visualization_msgs/MarkerArray`
 - `center_offset_topic` (`/rail_detector/center_offset`): output `std_msgs/Float32` signed rail-center offset in meters, or `NaN` when invalid
@@ -103,4 +104,47 @@ ros2 run rail_inspector rail_target_follower_node --ros-args \
   -p tangent_yaw_topic:=/rail_detector/tangent_yaw \
   -p follow_rail_speed_topic:=/follow_rail_speed \
   -p max_linear_x:=0.55
+```
+
+## rail_target_follow.launch.py
+
+Brings up the full pipeline: heightmap producer → `rail_detector_node` → `rail_target_follower_node`.
+
+### Heightmap source
+
+Two heightmap backends are supported, selected by the `use_elevation_mapping` argument:
+
+| Argument | Default | Heightmap node | Topic |
+|----------|---------|----------------|-------|
+| `use_elevation_mapping:=false` | yes | `simple_local_heightmap` | `/local_heightmap` |
+| `use_elevation_mapping:=true` | no | `elevation_mapping_cupy` | `/elevation_mapping_node/elevation_map_raw` |
+
+**`use_elevation_mapping:=false`** (default) — the lightweight CPU-only heightmap. Suitable for indoor testing and machines without a discrete GPU.
+
+**`use_elevation_mapping:=true`** — GPU-accelerated elevation mapping from `elevation_mapping_cupy`. Requires an NVIDIA GPU, CUDA, `cupy`, and `torch`. The node is launched with the shared `core_param.yaml` from the `elevation_mapping_cupy` package, plus these inline overrides:
+
+- `resolution: 0.05` — finer than the 0.1 m default; necessary to resolve a 0.15 m rail.
+- `map_length: 10.0` — covers the rail detection span and follow-target lookahead.
+- `subscribers.front_cam.topic_name` — forwarded from the `cloud_topic` argument (default `/mid360/points`).
+
+The `rail_detector_node` is automatically configured with the correct `heightmap_topic` for whichever backend is chosen. When using `elevation_mapping_cupy`, the launch file also sets `heightmap_layout:=column_major` on the detector; the simple path leaves the detector at its default (`flip`).
+
+### Key launch arguments
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `use_elevation_mapping` | `false` | Use `elevation_mapping_cupy` instead of `simple_local_heightmap` |
+| `enable_heightmap` | `true` | Start the full heightmap + detector + follower pipeline |
+| `cloud_topic` | `/mid360/points` | LiDAR point cloud topic |
+| `odom_topic` | `/odom` | Odometry topic |
+| `follow_mode` | `auto` | `"auto"` or `"teleop"` |
+| `use_rl_deploy_controller` | `true` | Also launch `rl_deploy` to convert `/cmd_vel` to joint commands |
+
+### Example — enable elevation_mapping_cupy
+
+```bash
+ros2 launch rail_inspector rail_target_follow.launch.py \
+  use_elevation_mapping:=true \
+  cloud_topic:=/mid360/points \
+  follow_mode:=teleop
 ```

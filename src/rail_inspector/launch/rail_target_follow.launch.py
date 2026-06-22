@@ -1,3 +1,6 @@
+import os
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, LogInfo, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
@@ -6,6 +9,7 @@ from launch_ros.actions import Node
 
 def launch_setup(context, *args, **kwargs):
     enable_heightmap = LaunchConfiguration('enable_heightmap').perform(context).strip().lower() == 'true'
+    use_elevation_mapping = LaunchConfiguration('use_elevation_mapping').perform(context).strip().lower() == 'true'
     use_rl_deploy_controller = (
         LaunchConfiguration('use_rl_deploy_controller').perform(context).strip().lower() == 'true'
     )
@@ -32,47 +36,98 @@ def launch_setup(context, *args, **kwargs):
     actions = []
 
     if enable_heightmap and cloud_topic:
+        detector_params = {
+            'odom_topic': odom_topic,
+            'marker_topic': '/rail_detector/markers',
+            'center_offset_topic': '/rail_detector/center_offset',
+            'tangent_yaw_topic': '/rail_detector/tangent_yaw',
+            'target_distance_topic': '/rail_detector/target_distance',
+            'use_sim_time': use_sim_time,
+            'track_gauge': track_gauge,
+            'rail_width': rail_width,
+            'num_slices': num_slices,
+            'lateral_search_width': lateral_search_width,
+            'forward_span': forward_span,
+            'backward_span': backward_span,
+        }
+
+        if use_elevation_mapping:
+            # GPU-accelerated elevation map (requires CUDA + cupy + torch).
+            # Publishes the standard grid_map column-major layout, so the detector
+            # must use heightmap_layout='column_major' to decode it correctly.
+            core_param_path = os.path.join(
+                get_package_share_directory('elevation_mapping_cupy'),
+                'config', 'core', 'core_param.yaml',
+            )
+            actions.append(
+                Node(
+                    package='elevation_mapping_cupy',
+                    executable='elevation_mapping_node.py',
+                    name='elevation_mapping_node',
+                    output='screen',
+                    parameters=[
+                        core_param_path,
+                        {
+                            'use_sim_time': use_sim_time,
+                            'map_frame': 'odom',
+                            'base_frame': 'base_link',
+                            'subscribers': {
+                                'front_cam': {
+                                    'topic_name': cloud_topic,
+                                    'data_type': 'pointcloud',
+                                },
+                            },
+                            'publishers': {
+                                'elevation_map_raw': {
+                                    'layers': ['elevation'],
+                                    'basic_layers': ['elevation'],
+                                    'fps': 5.0,
+                                },
+                            },
+                            # 0.1 m default is too coarse to resolve a 0.15 m rail;
+                            # 0.05 m matches the simple heightmap path's working resolution.
+                            'resolution': 0.05,
+                            # Cover rail detection range plus follow-target lookahead.
+                            'map_length': 10.0,
+                        },
+                    ],
+                )
+            )
+            detector_params['heightmap_topic'] = '/elevation_mapping_node/elevation_map_raw'
+            detector_params['heightmap_layout'] = 'column_major'
+        else:
+            actions.append(
+                Node(
+                    package='simple_local_heightmap',
+                    executable='local_heightmap_node',
+                    name='local_heightmap_node',
+                    output='screen',
+                    parameters=[{
+                        'cloud_topic': cloud_topic,
+                        'map_frame': 'odom',
+                        'robot_frame': 'base_link',
+                        'use_sim_time': use_sim_time,
+                        'resolution': 0.025,
+                        'length_x': 8.0,
+                        'length_y': 8.0,
+                        'front_clear_enabled': False,
+                        'front_clear_length': 2.5,
+                        'front_clear_width': 1.0,
+                        'front_clear_offset_x': 0.25,
+                        'front_stale_time_sec': 0.75,
+                    }],
+                )
+            )
+            # Keep the default simple-path params identical to the pre-refactor launch file.
+            detector_params['heightmap_topic'] = '/local_heightmap'
+
         actions.extend([
-            Node(
-                package='simple_local_heightmap',
-                executable='local_heightmap_node',
-                name='local_heightmap_node',
-                output='screen',
-                parameters=[{
-                    'cloud_topic': cloud_topic,
-                    'map_frame': 'odom',
-                    'robot_frame': 'base_link',
-                    'use_sim_time': use_sim_time,
-                    'resolution': 0.025,
-                    'length_x': 8.0,
-                    'length_y': 8.0,
-                    'front_clear_enabled': False,
-                    'front_clear_length': 2.5,
-                    'front_clear_width': 1.0,
-                    'front_clear_offset_x': 0.25,
-                    'front_stale_time_sec': 0.75,
-                }],
-            ),
             Node(
                 package='rail_inspector',
                 executable='rail_detector_node',
                 name='rail_detector_node',
                 output='screen',
-                parameters=[{
-                    'heightmap_topic': '/local_heightmap',
-                    'odom_topic': odom_topic,
-                    'marker_topic': '/rail_detector/markers',
-                    'center_offset_topic': '/rail_detector/center_offset',
-                    'tangent_yaw_topic': '/rail_detector/tangent_yaw',
-                    'target_distance_topic': '/rail_detector/target_distance',
-                    'use_sim_time': use_sim_time,
-                    'track_gauge': track_gauge,
-                    'rail_width': rail_width,
-                    'num_slices': num_slices,
-                    'lateral_search_width': lateral_search_width,
-                    'forward_span': forward_span,
-                    'backward_span': backward_span,
-                }],
+                parameters=[detector_params],
             ),
             Node(
                 package='rail_inspector',
@@ -129,6 +184,14 @@ def generate_launch_description():
             'enable_heightmap',
             default_value='true',
             description='Launch the heightmap, rail detector, and rail follower nodes',
+        ),
+        DeclareLaunchArgument(
+            'use_elevation_mapping',
+            default_value='true',
+            description=(
+                'Use elevation_mapping_cupy as the heightmap source instead of '
+                'simple_local_heightmap. Requires an NVIDIA GPU with CUDA, cupy, and torch.'
+            ),
         ),
         DeclareLaunchArgument(
             'use_rl_deploy_controller',

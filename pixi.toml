@@ -127,9 +127,9 @@ ros-kilted-tf2-ros-py = ">=0.41.6,<0.42"
 
 [feature.sim.pypi-dependencies]
 perlin-noise = ">=1.14, <2"
+rerun-loader-mjcf = ">=1.0.1, <2"
 
 [feature.rerun.pypi-dependencies]
-rerun-loader-mjcf = ">=1.0.1, <2"
 rerun-sdk = { version = ">=0.33.0, <0.34", extras = ["catalog"] }
 
 [feature.nav]
@@ -178,6 +178,22 @@ sysroot_linux-aarch64 = ">=2.17,<3"
 ros-jazzy-pcl-conversions = ">=2.6.2,<3"
 ros-jazzy-rosbag2 = "*"
 
+# [feature.nav.system-requirements]
+# cuda = "*"
+
+[feature.nav.target.linux-64.dependencies]
+# cupy = ">=12,<13"
+# cuda-version = "11.4.*"
+# pytorch-gpu = "*"
+
+[feature.nav.target.linux-aarch64.dependencies]
+# cupy = ">=12,<13"
+# cuda-version = "11.4.*"
+# pytorch-gpu = "*"
+
+[feature.nav.target.osx-arm64.dependencies]
+#   pytorch-cpu = "*"
+
 [feature.test.pypi-dependencies]
 artefacts-toolkit = ">=1.0.0, <2"
 
@@ -195,10 +211,17 @@ artefacts-cli = "*"
 [feature.artefacts.dependencies]
 python = ">=3.14.5,<3.15"
 
+[feature.elevation-mapping.dependencies]
+shapely = "*"
+simple-parsing = "*"
+scipy = "*"
+"ruamel.yaml" = "*"
+ros-jazzy-tf-transformations = ">=1.1.0,<2"
+
 
 [environments]
 sim = ["sim", "rerun"]
 sim-test = ["sim", "test", "rerun"]
-nav = ["nav", "rerun"]
-nav-test = ["nav", "test", "rerun"]
+nav = ["nav", "rerun", "elevation-mapping"]
+nav-test = ["nav", "test", "rerun", "elevation-mapping"]
 artefacts = ["artefacts"]
