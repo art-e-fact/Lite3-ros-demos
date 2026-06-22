@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable
+import subprocess
 
 import numpy as np
 
@@ -226,6 +227,8 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         }
         self._log_joint_angles(angles_by_name)
 
+def kill_rerun():
+    subprocess.run(["pkill", "-f", "rerun"], check=False)
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Rerun logger for the Lite3 rail demo.")
@@ -243,6 +246,9 @@ def main() -> None:
     args, unknownargs = parser.parse_known_args()
     rr.script_setup(args, "lite3_rail")
 
+    # Start gRPC server so a remote viewer can connect
+    rr.serve_grpc(grpc_port=9876)
+
     rclpy.init(args=unknownargs)
 
     rerun_subscriber = RerunSubscriber(
@@ -250,10 +256,14 @@ def main() -> None:
         static_heightmap=args.use_static_heightmap,
     )
 
-    rclpy.spin(rerun_subscriber)
-
-    rerun_subscriber.destroy_node()
-    rclpy.shutdown()
+    try:
+        rclpy.spin(rerun_subscriber)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        kill_rerun()
+        rerun_subscriber.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":

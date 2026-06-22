@@ -8,8 +8,11 @@ Rail-specific detector and follower nodes live in the `rail_inspector` package.
 ## local_heightmap_node
 
 The local heightmap keeps one elevation value per grid cell and ages out cells using the
-time since they were last observed. To clear transient hits faster in front of the robot,
-the node can apply a shorter timeout inside a rectangle defined in the robot frame.
+time since they were last observed. The grid recenters on the robot as it moves. Each scan
+uses the median height per cell. Point clouds are transformed into `map_frame` via TF;
+range filtering uses the cloud's sensor frame. To clear transient hits faster in front of
+the robot, the node can apply a shorter timeout inside a rectangle defined in the robot
+frame.
 
 ### Subscribed topics
 
@@ -23,8 +26,8 @@ the node can apply a shorter timeout inside a rectangle defined in the robot fra
 | Topic | Type | Description |
 |-------|------|-------------|
 | `heightmap_topic` (default `/local_heightmap`) | `grid_map_msgs/GridMap` | Elevation map output |
-| `debug_cloud_topic` (default `/local_heightmap/debug_points`) | `sensor_msgs/PointCloud2` | Valid cells as a point cloud |
-| `/local_heightmap/front_clear_markers` | `visualization_msgs/MarkerArray` | Visualises the fast-clear rectangle |
+| `/local_heightmap/front_clear_markers` | `visualization_msgs/MarkerArray` | Fast-clear rectangle (only when `front_clear_enabled` is true) |
+| `/perf/height_scan` | `std_msgs/Float32` | Per-scan processing time in milliseconds |
 
 ### Parameters
 
@@ -35,7 +38,6 @@ the node can apply a shorter timeout inside a rectangle defined in the robot fra
 | `cloud_topic` | `/mid360/points` | Input `PointCloud2` topic |
 | `odom_topic` | `/odom` | Odometry topic for pose-covariance gating |
 | `heightmap_topic` | `/local_heightmap` | Output `GridMap` topic |
-| `debug_cloud_topic` | `/local_heightmap/debug_points` | Debug point cloud topic |
 
 #### Coordinate frames
 

@@ -98,12 +98,17 @@ class RailDetectorNode(Node):
         self.forward_span = float(declare(
             'forward_span',
             2.6,
-            'Total forward span covered by the sampled rail slices.',
+            'Forward distance ahead of the robot covered by the sampled rail slices.',
+        ))
+        self.backward_span = float(declare(
+            'backward_span',
+            0.0,
+            'Backward distance behind the robot covered by the sampled rail slices.',
         ))
         self.num_slices = max(3, int(declare(
             'num_slices',
             15,
-            'Number of cross-sections sampled across the forward span.',
+            'Number of cross-sections sampled from backward_span behind to forward_span ahead.',
         )))
         self.lateral_search_width = float(
             declare(
@@ -169,6 +174,7 @@ class RailDetectorNode(Node):
                 msg.header.frame_id,
                 msg.header.stamp,
                 detection,
+                self.backward_span,
                 max(self.forward_span, self.follow_target_lookahead),
             )
         )
@@ -234,7 +240,7 @@ class RailDetectorNode(Node):
         yaw = self._yaw_from_quaternion(odom.pose.pose.orientation)
 
         forward_offsets = np.linspace(
-            -0.5 * self.forward_span, 0.5 * self.forward_span, self.num_slices, dtype=np.float32
+            -self.backward_span, self.forward_span, self.num_slices, dtype=np.float32
         )
         sample_count = max(31, int(round(2.0 * self.lateral_search_width / grid['resolution'])) + 1)
         lateral_offsets = np.linspace(
@@ -267,6 +273,7 @@ class RailDetectorNode(Node):
             slice_result = {
                 'xy': xy,
                 'z': z,
+                'baseline': baseline,
                 'left': None,
                 'right': None,
                 'midpoint': None,

@@ -8,18 +8,19 @@ local height map and publish rail-following control signals.
 The detector consumes a `grid_map_msgs/GridMap` elevation map and odometry. It samples
 multiple lateral slices around the robot, pairs rail-like height groups using the
 configured track gauge, fits a short rail centerline, and always publishes RViz
-`MarkerArray` debug markers as well as scalar outputs for the follower.  Rerun
-visualization is handled by the separate `rerun_logger` node, which subscribes to
-`/rail_detector/markers` and converts them into Rerun entities.
+`MarkerArray` debug markers as well as scalar outputs for the follower. When no rail
+line is found, `center_offset` and `tangent_yaw` are published as `NaN`; `target_distance`
+is `-1.0`. Rerun visualization is handled by the separate `rerun_logger` node, which
+subscribes to `/rail_detector/markers` and converts them into Rerun entities.
 
 ### Parameters
 
 - `heightmap_topic` (`/local_heightmap`): input `grid_map_msgs/GridMap`
 - `odom_topic` (`/odom`): input `nav_msgs/Odometry` used for robot position and heading
 - `marker_topic` (`/rail_detector/markers`): output `visualization_msgs/MarkerArray`
-- `center_offset_topic` (`/rail_detector/center_offset`): output signed rail-center offset in meters
-- `tangent_yaw_topic` (`/rail_detector/tangent_yaw`): output detected rail tangent yaw in radians
-- `target_distance_topic` (`/rail_detector/target_distance`): output target distance in meters, or `-1.0` when invalid
+- `center_offset_topic` (`/rail_detector/center_offset`): output `std_msgs/Float32` signed rail-center offset in meters, or `NaN` when invalid
+- `tangent_yaw_topic` (`/rail_detector/tangent_yaw`): output `std_msgs/Float32` detected rail tangent yaw in radians, or `NaN` when invalid
+- `target_distance_topic` (`/rail_detector/target_distance`): output `std_msgs/Float32` target distance in meters, or `-1.0` when invalid
 - `track_gauge` (`1.067`): expected distance between rails in meters
 - `rail_width` (`0.15`): expected lateral width of one rail in meters
 - `gauge_tolerance` (`0.40`): maximum rail-pair gauge error allowed in one slice
@@ -28,8 +29,9 @@ visualization is handled by the separate `rerun_logger` node, which subscribes t
 - `min_rail_height` (`0.05`): minimum height above the local baseline to accept a rail hit
 - `max_rail_height` (`0.30`): maximum height above the local baseline to accept a rail hit
 - `max_rail_height_difference` (`0.08`): maximum height mismatch between left and right rails
-- `forward_span` (`2.6`): total span covered by the sampled rail slices
-- `num_slices` (`15`): number of cross-sections sampled across the forward span
+- `forward_span` (`2.6`): forward distance ahead of the robot covered by the sampled rail slices
+- `backward_span` (`0.0`): backward distance behind the robot covered by the sampled rail slices
+- `num_slices` (`15`): number of cross-sections sampled from `backward_span` behind to `forward_span` ahead
 - `lateral_search_width` (`1.8`): half-width of each sampled cross-section in meters
 - `follow_target_lookahead` (`8.0`): forward distance checked for a follow target
 - `follow_target_kernel_size` (`0.35`): width of the center sample window used to measure the target
@@ -53,17 +55,17 @@ The follower consumes detector outputs and odometry, then publishes
 
 It supports two control modes, configurable via the `follow_mode` parameter:
 - **`auto`**: The robot automatically follows the rail forward and stops at a configured distance from the detected follow target. If the rail line becomes invalid, the target disappears, or any input becomes stale, the follower publishes a zero `Twist`.
-- **`manual`**: The robot aligns and centers itself on the rail, but its forward/backward speed along the rail is manually controlled by publishing to the `follow_rail_speed` topic. If the manual speed input, the rail line, or any other input becomes stale, the follower publishes a zero `Twist`.
+- **`teleop`**: The robot aligns and centers itself on the rail, but its forward/backward speed along the rail is controlled by publishing to the `follow_rail_speed` topic. A valid follow target is not required. If the teleop speed input, the rail line, or any other input becomes stale, the follower publishes a zero `Twist`.
 
 ### Parameters
 
 - `cmd_vel_topic` (`/cmd_vel`): output `geometry_msgs/Twist`
 - `odom_topic` (`/odom`): input `nav_msgs/Odometry` used for robot yaw and body-frame conversion
-- `center_offset_topic` (`/rail_detector/center_offset`): input signed rail-center offset topic
-- `tangent_yaw_topic` (`/rail_detector/tangent_yaw`): input rail tangent yaw topic
-- `target_distance_topic` (`/rail_detector/target_distance`): input follow-target distance topic
-- `follow_mode` (`"auto"`): control mode, `"auto"` (follows target automatically) or `"manual"` (uses `follow_rail_speed`)
-- `follow_rail_speed_topic` (`/follow_rail_speed`): input `geometry_msgs/Twist` topic for manual forward speed command (only `linear.x` is read)
+- `center_offset_topic` (`/rail_detector/center_offset`): input `std_msgs/Float32` signed rail-center offset
+- `tangent_yaw_topic` (`/rail_detector/tangent_yaw`): input `std_msgs/Float32` rail tangent yaw
+- `target_distance_topic` (`/rail_detector/target_distance`): input `std_msgs/Float32` follow-target distance; negative means invalid
+- `follow_mode` (`"auto"`): control mode, `"auto"` (follows target automatically) or `"teleop"` (uses `follow_rail_speed`)
+- `follow_rail_speed_topic` (`/follow_rail_speed`): input `geometry_msgs/Twist` topic for teleop forward speed command (only `linear.x` is read)
 - `control_rate_hz` (`15.0`): control loop rate used to publish `cmd_vel`
 - `stale_timeout_sec` (`0.5`): maximum wall-time age accepted for detector and odometry inputs
 - `follow_distance` (`1.5`): desired stop distance to the follow target
@@ -92,11 +94,11 @@ ros2 run rail_inspector rail_target_follower_node --ros-args \
   -p distance_error_for_max_speed:=1.5
 ```
 
-#### Manual Mode
+#### Teleop Mode
 
 ```bash
 ros2 run rail_inspector rail_target_follower_node --ros-args \
-  -p follow_mode:=manual \
+  -p follow_mode:=teleop \
   -p center_offset_topic:=/rail_detector/center_offset \
   -p tangent_yaw_topic:=/rail_detector/tangent_yaw \
   -p follow_rail_speed_topic:=/follow_rail_speed \
