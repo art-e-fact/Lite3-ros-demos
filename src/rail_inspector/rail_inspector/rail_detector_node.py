@@ -95,6 +95,16 @@ class RailDetectorNode(Node):
                 'Maximum height mismatch allowed between the left and right rail.',
             )
         )
+        self.baseline_auto = bool(declare(
+            'baseline_auto',
+            True,
+            'Estimate the ground baseline per slice from the height scan.',
+        ))
+        self.baseline_z = float(declare(
+            'baseline_z',
+            0.0,
+            'Fixed ground baseline Z in the odom frame; used when baseline_auto is false.',
+        ))
         self.forward_span = float(declare(
             'forward_span',
             2.6,
@@ -151,9 +161,14 @@ class RailDetectorNode(Node):
         self.create_subscription(Odometry, self.odom_topic, self.odom_callback, 10)
         self.create_subscription(GridMap, self.heightmap_topic, self.heightmap_callback, 10)
 
+        baseline_mode = (
+            'auto (per-slice median)'
+            if self.baseline_auto
+            else f'fixed at {self.baseline_z:.3f} m in odom'
+        )
         self.get_logger().info(
-            f'Parsing rails from {self.heightmap_topic} with {self.num_slices} slices '
-            f'and publishing markers on {self.marker_topic}'
+            f'Parsing rails from {self.heightmap_topic} with {self.num_slices} slices, '
+            f'baseline={baseline_mode}, publishing markers on {self.marker_topic}'
         )
 
     def odom_callback(self, msg):
@@ -361,10 +376,13 @@ class RailDetectorNode(Node):
         slice_center = robot_xy + forward_offset * forward
         xy = slice_center + lateral_offsets[:, None] * lateral[None, :]
         z = self._sample_grid(grid, xy)
-        center_mask = np.abs(lateral_offsets) <= min(0.25, 0.25 * self.track_gauge)
-        baseline = self._safe_nanmedian(z[center_mask])
-        if not math.isfinite(baseline):
-            baseline = self._safe_nanmedian(z)
+        if not self.baseline_auto:
+            baseline = self.baseline_z
+        else:
+            center_mask = np.abs(lateral_offsets) <= min(0.25, 0.25 * self.track_gauge)
+            baseline = self._safe_nanmedian(z[center_mask])
+            if not math.isfinite(baseline):
+                baseline = self._safe_nanmedian(z)
         return xy, z, baseline
 
     def _sample_grid(self, grid, xy):

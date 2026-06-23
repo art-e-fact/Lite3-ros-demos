@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable
 import subprocess
+import warnings
 
 import numpy as np
 
@@ -31,6 +32,11 @@ from drdds.msg import JointsData
 from rerun_logger.local_heightmap_rerun import log_local_heightmap
 from rerun_logger.rail_detector_rerun import log_rail_detector_markers
 
+warnings.filterwarnings(
+    "ignore",
+    message=r"Joint .* angle .* is outside limits .* Clamping\.",
+    category=UserWarning,
+)
 
 
 class RerunSubscriber(Node):  # type: ignore[misc]
@@ -227,9 +233,6 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         }
         self._log_joint_angles(angles_by_name)
 
-def kill_rerun():
-    subprocess.run(["pkill", "-f", "rerun"], check=False)
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Rerun logger for the Lite3 rail demo.")
     rr.script_add_args(parser)
@@ -243,11 +246,16 @@ def main() -> None:
         action="store_true",
         help="Log the heightmap as a static entity so it is not recorded to the timeline.",
     )
+    parser.add_argument(
+        "--onboard-fix",
+        action="store_true",
+        help="Start a gRPC server for remote viewing and kill rerun on exit.",
+    )
     args, unknownargs = parser.parse_known_args()
     rr.script_setup(args, "lite3_rail")
 
-    # Start gRPC server so a remote viewer can connect
-    rr.serve_grpc(grpc_port=9876)
+    if args.onboard_fix:
+        rr.serve_grpc(grpc_port=9876)
 
     rclpy.init(args=unknownargs)
 
@@ -261,7 +269,6 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        kill_rerun()
         rerun_subscriber.destroy_node()
         rclpy.shutdown()
 
