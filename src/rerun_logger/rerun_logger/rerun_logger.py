@@ -233,9 +233,6 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         }
         self._log_joint_angles(angles_by_name)
 
-def kill_rerun():
-    subprocess.run(["pkill", "-f", "rerun"], check=False)
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Rerun logger for the Lite3 rail demo.")
     rr.script_add_args(parser)
@@ -272,8 +269,6 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        if args.onboard_fix:
-            kill_rerun()
         rerun_subscriber.destroy_node()
         rclpy.shutdown()
 
