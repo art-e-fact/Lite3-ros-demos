@@ -1,4 +1,4 @@
-"""Rerun logging for local_heightmap GridMap messages as Boxes3D."""
+"""Rerun logging for local_heightmap GridMap and front-clear markers."""
 
 from __future__ import annotations
 
@@ -6,6 +6,9 @@ import numpy as np
 import rerun as rr
 from grid_map_msgs.msg import GridMap
 from rclpy.time import Time
+from visualization_msgs.msg import Marker, MarkerArray
+
+_FRONT_CLEAR_PATHS = ('heightmap/front_clear/fill', 'heightmap/front_clear/outline')
 
 
 def log_local_heightmap(msg: GridMap, *, static: bool = False) -> None:
@@ -67,6 +70,99 @@ def log_local_heightmap(msg: GridMap, *, static: bool = False) -> None:
         ),
         static=static,
     )
+
+
+def log_front_clear_markers(msg: MarkerArray, front_clear_frame: str | None) -> str | None:
+    """
+    Convert ``/local_heightmap/front_clear_markers`` into Rerun entities.
+
+    The producer publishes a semi-transparent CUBE plus a LINE_STRIP outline
+    when front fast-clear is enabled, or only a DELETEALL sentinel otherwise.
+
+    Args:
+        msg: The incoming MarkerArray.
+        front_clear_frame: The coordinate frame last pinned to the front-clear
+            entities, or ``None`` if not yet initialised.
+
+    Returns:
+        The (possibly updated) ``front_clear_frame`` value.
+    """
+    ns_markers: dict[str, list[Marker]] = {}
+    frame_id: str | None = None
+    stamp = None
+
+    for marker in msg.markers:
+        if marker.action == Marker.DELETEALL:
+            continue
+        ns_markers.setdefault(marker.ns, []).append(marker)
+        if stamp is None:
+            frame_id = marker.header.frame_id
+            stamp = marker.header.stamp
+
+    if stamp is None:
+        for path in _FRONT_CLEAR_PATHS:
+            rr.log(path, [])
+        return front_clear_frame
+
+    time = Time.from_msg(stamp)
+    rr.set_time("ros_time", timestamp=np.datetime64(time.nanoseconds, "ns"))
+
+    if frame_id and frame_id != front_clear_frame:
+        front_clear_frame = frame_id
+        for path in _FRONT_CLEAR_PATHS:
+            rr.log(path, rr.CoordinateFrame(frame=frame_id), static=True)
+
+    area_markers = ns_markers.get('front_clear_area', [])
+    if area_markers:
+        marker = area_markers[0]
+        rr.log(
+            'heightmap/front_clear/fill',
+            rr.Boxes3D(
+                half_sizes=[[marker.scale.x / 2, marker.scale.y / 2, marker.scale.z / 2]],
+                centers=[[
+                    marker.pose.position.x,
+                    marker.pose.position.y,
+                    marker.pose.position.z,
+                ]],
+                rotations=rr.Quaternion(xyzw=[[
+                    marker.pose.orientation.x,
+                    marker.pose.orientation.y,
+                    marker.pose.orientation.z,
+                    marker.pose.orientation.w,
+                ]]),
+                colors=[[
+                    round(marker.color.r * 255),
+                    round(marker.color.g * 255),
+                    round(marker.color.b * 255),
+                    round(marker.color.a * 255),
+                ]],
+                fill_mode='solid',
+            ),
+        )
+    else:
+        rr.log('heightmap/front_clear/fill', [])
+
+    outline_markers = ns_markers.get('front_clear_outline', [])
+    if outline_markers and outline_markers[0].points:
+        marker = outline_markers[0]
+        pts = [[point.x, point.y, point.z] for point in marker.points]
+        rr.log(
+            'heightmap/front_clear/outline',
+            rr.LineStrips3D(
+                [pts],
+                radii=marker.scale.x,
+                colors=[[
+                    round(marker.color.r * 255),
+                    round(marker.color.g * 255),
+                    round(marker.color.b * 255),
+                    round(marker.color.a * 255),
+                ]],
+            ),
+        )
+    else:
+        rr.log('heightmap/front_clear/outline', [])
+
+    return front_clear_frame
 
 
 # ---------------------------------------------------------------------------

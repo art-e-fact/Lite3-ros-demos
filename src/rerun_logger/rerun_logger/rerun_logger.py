@@ -29,7 +29,7 @@ from tf2_msgs.msg import TFMessage
 from visualization_msgs.msg import MarkerArray
 from drdds.msg import JointsData
 
-from rerun_logger.local_heightmap_rerun import log_local_heightmap
+from rerun_logger.local_heightmap_rerun import log_front_clear_markers, log_local_heightmap
 from rerun_logger.rail_detector_rerun import log_rail_detector_markers
 
 warnings.filterwarnings(
@@ -110,10 +110,16 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         self.subscribe("/rail_detector/markers", MarkerArray, self.rail_detector_markers_callback)
         self.subscribe("/perf/height_scan", Float32, self.height_scan_perf_callback)
         self._detector_frame: str | None = None
+        self._front_clear_frame: str | None = None
         self._heartbeat_count = 0
         self.create_timer(1.0, self._heartbeat_callback)
         if log_heightmap:
             self.subscribe("/local_heightmap", GridMap, self.local_heightmap_callback)
+            self.subscribe(
+                "/local_heightmap/front_clear_markers",
+                MarkerArray,
+                self.front_clear_markers_callback,
+            )
 
     def subscribe(
         self, topic: str, msg_type: type, callback: Callable[[rclpy.MsgT], None], latching: bool = False
@@ -202,6 +208,9 @@ class RerunSubscriber(Node):  # type: ignore[misc]
 
     def local_heightmap_callback(self, msg: GridMap) -> None:
         log_local_heightmap(msg, static=self._static_heightmap)
+
+    def front_clear_markers_callback(self, msg: MarkerArray) -> None:
+        self._front_clear_frame = log_front_clear_markers(msg, self._front_clear_frame)
 
     def height_scan_perf_callback(self, msg: Float32) -> None:
         time = self.get_clock().now()
