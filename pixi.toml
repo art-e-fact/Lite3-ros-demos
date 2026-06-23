@@ -181,7 +181,7 @@ ros-jazzy-teleop-twist-keyboard = ">=2.4.1,<3"
 pcl = ">=1.15.1,<2"
 sysroot_linux-aarch64 = ">=2.17,<3"
 ros-jazzy-pcl-conversions = ">=2.6.2,<3"
-ros-jazzy-rosbag2 = "*"
+ros-jazzy-rosbag2 = ">=0.26.9,<0.27"
 
 [feature.test.pypi-dependencies]
 artefacts-toolkit = ">=1.0.0, <2"

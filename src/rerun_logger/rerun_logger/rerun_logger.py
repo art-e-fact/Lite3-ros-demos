@@ -38,6 +38,22 @@ warnings.filterwarnings(
     category=UserWarning,
 )
 
+# Real-robot /joint_states names (LF/RF/LB/RB) -> Lite3 URDF joint names (FL/FR/HL/HR).
+JOINT_STATE_NAME_TO_URDF = {
+    "LF_Joint": "FL_HipX_joint",
+    "LF_Joint_1": "FL_HipY_joint",
+    "LF_Joint_2": "FL_Knee_joint",
+    "RF_Joint": "FR_HipX_joint",
+    "RF_Joint_1": "FR_HipY_joint",
+    "RF_Joint_2": "FR_Knee_joint",
+    "LB_Joint": "HL_HipX_joint",
+    "LB_Joint_1": "HL_HipY_joint",
+    "LB_Joint_2": "HL_Knee_joint",
+    "RB_Joint": "HR_HipX_joint",
+    "RB_Joint_1": "HR_HipY_joint",
+    "RB_Joint_2": "HR_Knee_joint",
+}
+
 
 class RerunSubscriber(Node):  # type: ignore[misc]
     def __init__(self, *, log_heightmap: bool = False, static_heightmap: bool = False) -> None:
@@ -226,11 +242,12 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         time = Time.from_msg(msg.header.stamp)
         rr.set_time("ros_time", timestamp=np.datetime64(time.nanoseconds, "ns"))
 
-        angles_by_name = {
-            name: pos
-            for name, pos in zip(msg.name, msg.position)
-            if name in self.joint_name_to_index
-        }
+        # The joint states message uses different names on real hardware than the URDF.
+        angles_by_name: dict[str, float] = {}
+        for name, pos in zip(msg.name, msg.position):
+            urdf_name = JOINT_STATE_NAME_TO_URDF.get(name, name)
+            if urdf_name in self.joint_name_to_index:
+                angles_by_name[urdf_name] = pos
         self._log_joint_angles(angles_by_name)
 
 def main() -> None:
