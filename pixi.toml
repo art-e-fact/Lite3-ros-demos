@@ -9,6 +9,9 @@ name = "lite3-workspace"
 platforms = ["linux-64", "osx-arm64", "linux-aarch64"]
 version = "0.1.0"
 
+[system-requirements]
+cuda = "12.8"
+
 [tasks]
 build = [
     { task = "build-nav", environment = "nav" },
@@ -182,6 +185,16 @@ pcl = ">=1.15.1,<2"
 sysroot_linux-aarch64 = ">=2.17,<3"
 ros-jazzy-pcl-conversions = ">=2.6.2,<3"
 ros-jazzy-rosbag2 = "*"
+ros-jazzy-launch-testing-ament-cmake = ">=3.4.10,<4"
+simple-parsing = ">=0.1.8,<0.2"
+scipy = ">=1.16.3,<2"
+"ruamel.yaml" = ">=0.19.1,<0.20"
+shapely = ">=2.1.2,<3"
+ros-jazzy-tf-transformations = ">=1.1.0,<2"
+
+[feature.nav.target.linux-64.dependencies]
+cupy = ">=13.6.0,<14"
+pytorch-gpu = ">=2.10.0,<3"
 
 [feature.test.pypi-dependencies]
 artefacts-toolkit = ">=1.0.0, <2"
