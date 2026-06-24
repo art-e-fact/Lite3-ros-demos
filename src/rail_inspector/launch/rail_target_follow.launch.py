@@ -38,7 +38,6 @@ def launch_setup(context, *args, **kwargs):
                     remappings=[('/elevation_mapping_node/local_heightmap', '/local_heightmap')],
                 )
             )
-            detector_params = [params_file, {'heightmap_layout': 'column_major'}]
         else:
             actions.append(
                 Node(
@@ -49,7 +48,6 @@ def launch_setup(context, *args, **kwargs):
                     parameters=[params_file],
                 )
             )
-            detector_params = [params_file]
 
         actions.extend([
             Node(
@@ -57,7 +55,7 @@ def launch_setup(context, *args, **kwargs):
                 executable='rail_detector_node',
                 name='rail_detector_node',
                 output='screen',
-                parameters=detector_params,
+                parameters=[params_file],
             ),
             Node(
                 package='rail_inspector',

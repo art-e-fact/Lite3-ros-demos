@@ -16,7 +16,6 @@ subscribes to `/rail_detector/markers` and converts them into Rerun entities.
 ### Parameters
 
 - `heightmap_topic` (`/local_heightmap`): input `grid_map_msgs/GridMap`
-- `heightmap_layout` (`flip`): how to decode the GridMap data array; `"flip"` for `simple_local_heightmap` (legacy flip + C-order ravel), `"column_major"` for `elevation_mapping_cupy` (standard grid_map Eigen column-major / F-order)
 - `odom_topic` (`/odom`): input `nav_msgs/Odometry` used for robot position and heading
 - `marker_topic` (`/rail_detector/markers`): output `visualization_msgs/MarkerArray`
 - `center_offset_topic` (`/rail_detector/center_offset`): output `std_msgs/Float32` signed rail-center offset in meters, or `NaN` when invalid
@@ -112,7 +111,7 @@ ros2 run rail_inspector rail_target_follower_node --ros-args \
 
 Brings up the full pipeline: heightmap producer → `rail_detector_node` → `rail_target_follower_node`.
 
-Node parameters come from a shared YAML file (`params_file`, default `config/rail_follow_sim.yaml`). The launch file can override the heightmap backend and a few detector fields when switching to GPU elevation mapping.
+Node parameters come from a shared YAML file (`params_file`, default `config/rail_follow_sim.yaml`). The launch file selects the heightmap backend via `use_elevation_mapping`.
 
 ### Heightmap source
 
@@ -125,7 +124,7 @@ Two heightmap backends are supported, selected by the `use_elevation_mapping` ar
 
 **`use_elevation_mapping:=false`** (default) — the lightweight CPU-only heightmap. Suitable for indoor testing and machines without a discrete GPU.
 
-**`use_elevation_mapping:=true`** — GPU-accelerated elevation mapping from `elevation_mapping_cupy`. Requires an NVIDIA GPU, CUDA, `cupy`, and `torch`. The node is launched with `core_param.yaml` plus the `elevation_mapping_node` section from `params_file` (see `config/rail_follow_sim.yaml`). The map is remapped to `/local_heightmap` so the detector topic stays the same; the launch file sets `heightmap_layout:=column_major` on the detector.
+**`use_elevation_mapping:=true`** — GPU-accelerated elevation mapping from `elevation_mapping_cupy`. Requires an NVIDIA GPU, CUDA, `cupy`, and `torch`. The node is launched with `core_param.yaml` plus the `elevation_mapping_node` section from `params_file` (see `config/rail_follow_sim.yaml`). The map is remapped to `/local_heightmap` so the detector topic stays the same.
 
 ### Key launch arguments
 

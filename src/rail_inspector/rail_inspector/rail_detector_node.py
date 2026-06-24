@@ -28,12 +28,6 @@ class RailDetectorNode(Node):
             '/local_heightmap',
             'Input GridMap topic with the local elevation layer.',
         )
-        self.heightmap_layout = declare(
-            'heightmap_layout',
-            'flip',
-            'GridMap data layout: "flip" for simple_local_heightmap (legacy flip+C-order), '
-            '"column_major" for elevation_mapping_cupy (standard grid_map Eigen column-major).',
-        )
         self.odom_topic = declare(
             'odom_topic',
             '/odom',
@@ -236,14 +230,9 @@ class RailDetectorNode(Node):
             self.get_logger().warn('GridMap elevation data size does not match its layout', throttle_duration_sec=2.0)
             return None
 
-        if self.heightmap_layout == 'column_major':
-            # Standard grid_map Eigen column-major layout, as published by elevation_mapping_cupy.
-            # dim[0] is column_index (cols), dim[1] is row_index (rows); data is F-order (col-by-col).
-            elevation = flat.reshape((rows, cols), order='F')
-        else:
-            # Legacy simple_local_heightmap layout: data was ravel'd in C-order after a full flip,
-            # so un-flip after a C-order reshape to recover row->+Y, col->+X convention.
-            elevation = np.flip(flat.reshape(rows, cols), axis=(0, 1))
+        # Data was ravel'd in C-order after a full flip, so un-flip after a C-order reshape
+        # to recover row->+Y, col->+X convention.
+        elevation = np.flip(flat.reshape(rows, cols), axis=(0, 1))
         resolution = float(msg.info.resolution)
         center = np.array([
             float(msg.info.pose.position.x),
