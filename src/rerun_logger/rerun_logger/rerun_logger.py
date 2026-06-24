@@ -111,15 +111,13 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         self.subscribe("/perf/height_scan", Float32, self.height_scan_perf_callback)
         self._detector_frame: str | None = None
         self._front_clear_frame: str | None = None
-        self._heartbeat_count = 0
-        self.create_timer(1.0, self._heartbeat_callback)
+        self.subscribe(
+            "/local_heightmap/front_clear_markers",
+            MarkerArray,
+            self.front_clear_markers_callback,
+        )
         if log_heightmap:
             self.subscribe("/local_heightmap", GridMap, self.local_heightmap_callback)
-            self.subscribe(
-                "/local_heightmap/front_clear_markers",
-                MarkerArray,
-                self.front_clear_markers_callback,
-            )
 
     def subscribe(
         self, topic: str, msg_type: type, callback: Callable[[rclpy.MsgT], None], latching: bool = False
@@ -217,17 +215,11 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         rr.set_time("ros_time", timestamp=np.datetime64(time.nanoseconds, "ns"))
         rr.log("perf/height-scan", rr.Scalars(msg.data))
 
-    def _heartbeat_callback(self) -> None:
-        time = self.get_clock().now()
-        rr.set_time("ros_time", timestamp=np.datetime64(time.nanoseconds, "ns"))
-        rr.log("logger/alive", rr.Scalars(float(self._heartbeat_count)))
-        self._heartbeat_count += 1
-
     def _log_joint_angles(self, angles_by_name: dict[str, float]) -> None:
         """Logs joint transforms to Rerun given a mapping of joint name -> angle (radians)."""
         for joint in self.urdf_tree.joints():
             if joint.joint_type == "revolute" and joint.name in angles_by_name:
-                transform = joint.compute_transform(angles_by_name[joint.name], clamp=True)
+                transform = joint.compute_transform(angles_by_name[joint.name], clamp=False)
                 rr.log("transforms", transform)
 
     def joints_callback(self, msg: JointsData) -> None:
@@ -256,7 +248,7 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         for name, pos in zip(msg.name, msg.position):
             urdf_name = JOINT_STATE_NAME_TO_URDF.get(name, name)
             if urdf_name in self.joint_name_to_index:
-                angles_by_name[urdf_name] = pos
+                angles_by_name[urdf_name] = -pos
         self._log_joint_angles(angles_by_name)
 
 def main() -> None:

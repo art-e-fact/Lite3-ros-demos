@@ -27,7 +27,9 @@ def generate_launch_description():
             executable='static_transform_publisher',
             output='screen',
             # arguments=["0.2", "0", "0.38", "0.0", "0.38397", "0.0", "base_link", "livox_frame"],
-            arguments=['0', '0', '0', '0', '0', '0.0', 'base_link', 'livox_frame'],
+            # arguments=['0.2', '0', '0.1', '0', '0', '0.0', 'base_link', 'livox_frame'],
+            arguments=['0', '0', '0.1', '0.', '0', '0.0', 'base_link', 'livox_frame'],
+            # arguments=['0', '0', '0', '0.', '0', '0.0', 'base_link', 'livox_frame'],
         ),
         DeclareLaunchArgument(
             'params_file',
@@ -50,3 +52,4 @@ def generate_launch_description():
             }.items(),
         ),
     ])
+
