@@ -10,7 +10,6 @@ from textual.validation import Number
 from textual.widgets import (
     Button,
     Footer,
-    Header,
     Input,
     Label,
     Rule,
@@ -33,7 +32,7 @@ from rail_inspector.rail_follow_tui.sync_input import sync_input
 class RailFollowTuiApp(App):
     """Terminal UI: teleop controls and live parameter reconfigure."""
 
-    TITLE = 'Rail Follow'
+    TITLE = 'Artefacts • Rail Follow Controls'
 
     CSS = """
     Screen {
@@ -41,8 +40,26 @@ class RailFollowTuiApp(App):
         overflow: hidden;
     }
 
-    Header {
+    #app-header {
+        height: 1;
         background: #5b4ca9;
+        color: #f0ecff;
+        align: center middle;
+    }
+
+    .header-refresh {
+        min-width: 10;
+        height: 1;
+        margin: 0 1 0 0;
+        background: #4a3d8a;
+        border: none;
+        color: #f0ecff;
+    }
+
+    #header-title {
+        width: 1fr;
+        text-align: center;
+        text-style: bold;
         color: #f0ecff;
     }
 
@@ -196,7 +213,14 @@ class RailFollowTuiApp(App):
         # Switch OFF = Autonomous (teleop); ON = Follow (auto).
         auto_mode = follow_mode.get() == 'auto'
 
-        yield Header(show_clock=False)
+        with Horizontal(id='app-header'):
+            yield Static(self.TITLE, id='header-title')
+            yield Button(
+                '↻ Refresh',
+                id='refresh-button',
+                classes='header-refresh',
+                tooltip='Refresh from ROS',
+            )
         with TabbedContent(initial='control', id='main-tabs'):
             with TabPane('Control', id='control'):
                 with Vertical(id='content'):
@@ -237,7 +261,7 @@ class RailFollowTuiApp(App):
         motion = 'GO' if going else 'STOP'
         return f'{mode} · {motion} · {speed:+.2f} m/s'
 
-    def _update_from_ros(self) -> None:
+    def _update_from_ros(self, *, force: bool = False) -> None:
         """Refresh widgets from self.ros.params."""
         speed = self.ros.params[KEY_SPEED]
         going = self.ros.params[KEY_GOING]
@@ -260,11 +284,11 @@ class RailFollowTuiApp(App):
             button.add_class('-go')
 
         speed_input = self.query_one('#speed-input', Input)
-        if not speed_input.has_focus:
+        if force or not speed_input.has_focus:
             sync_input(self, speed_input, f'{speed.get():.2f}')
 
         self.query_one('#status-line', Static).update(self._status_text())
-        self.query_one(ParamsPanel).sync_all()
+        self.query_one(ParamsPanel).sync_all(force=force)
 
     def _tick(self) -> None:
         self.ros.spin_once()
@@ -294,6 +318,18 @@ class RailFollowTuiApp(App):
         follow_mode.assign(mode)
         self._apply_follow_mode(mode)
         self._update_from_ros()
+
+    @on(Button.Pressed, '#refresh-button')
+    def on_refresh_pressed(self) -> None:
+        btn = self.query_one('#refresh-button', Button)
+        btn.disabled = True
+
+        def done(_ok: bool) -> None:
+            self._update_from_ros(force=True)
+            self.ros.clear_dirty()
+            btn.disabled = False
+
+        self.ros.refresh_from_server(on_done=done)
 
     @on(Button.Pressed, '#go-button')
     def on_go_pressed(self) -> None:

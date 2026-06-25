@@ -93,8 +93,8 @@ def _tui_params() -> dict[str, EditableParam]:
             key=KEY_SPEED,
             param_type=Parameter.Type.DOUBLE,
             default=0.4,
-            min=-0.55,
-            max=0.55,
+            min=-0.75,
+            max=0.75,
             step=0.05,
             description='Teleop speed command in m/s.',
         ),
@@ -191,6 +191,20 @@ class _PendingGet:
     on_done: Callable[[bool], None] | None
 
 
+@dataclass
+class _RefreshRequest:
+    remaining: int
+    all_succeeded: bool
+    on_done: Callable[[bool], None] | None
+
+
+@dataclass
+class _PendingGetBatch:
+    param_keys: list[str]
+    future: Any
+    refresh: _RefreshRequest
+
+
 class RosState(Node):
     """Owns watched parameters, syncs via /parameter_events, publishes teleop Twist."""
 
@@ -222,6 +236,7 @@ class RosState(Node):
         self._get_clients: dict[str, rclpy.client.Client] = {}
         self._pending_sets: dict[str, _PendingSet] = {}
         self._pending_gets: list[_PendingGet] = []
+        self._pending_get_batches: list[_PendingGetBatch] = []
         self._set_generation: dict[str, int] = {}
 
         self._speed_pub = self.create_publisher(Twist, speed_topic, 10)
@@ -275,6 +290,35 @@ class RosState(Node):
         """Finish in-flight remote param service calls (call after spin_once)."""
         self._process_pending_sets()
         self._process_pending_gets()
+        self._process_pending_get_batches()
+
+    def refresh_from_server(
+        self,
+        on_done: Callable[[bool], None] | None = None,
+    ) -> None:
+        """Re-read all watched params from the parameter server (async)."""
+        for param in self.params.values():
+            if param.local:
+                param.assign(self.get_parameter(param.param_name).value)
+
+        remote_by_node: dict[str, list[str]] = {}
+        for key, param in self.params.items():
+            if not param.local:
+                remote_by_node.setdefault(param.node_name, []).append(key)
+
+        if not remote_by_node:
+            self.mark_dirty()
+            if on_done:
+                on_done(True)
+            return
+
+        refresh = _RefreshRequest(
+            remaining=len(remote_by_node),
+            all_succeeded=True,
+            on_done=on_done,
+        )
+        for node_name, param_keys in remote_by_node.items():
+            self._request_get_batch(node_name, param_keys, refresh)
 
     def publish_tick(self) -> None:
         """Publish teleop speed when going in teleop mode; otherwise stop."""
@@ -393,6 +437,70 @@ class RosState(Node):
                 pending.on_done(value is not None)
 
         self._pending_gets = remaining
+
+    def _request_get_batch(
+        self,
+        node_name: str,
+        param_keys: list[str],
+        refresh: _RefreshRequest,
+    ) -> None:
+        client = self._get_client(node_name)
+        if not client.service_is_ready():
+            self.get_logger().warning(
+                f'/{node_name}/get_parameters unavailable'
+            )
+            self._finish_refresh_batch(refresh, False)
+            return
+
+        request = GetParameters.Request()
+        request.names = [self.params[key].param_name for key in param_keys]
+        future = client.call_async(request)
+        self._pending_get_batches.append(
+            _PendingGetBatch(param_keys, future, refresh)
+        )
+
+    def _process_pending_get_batches(self) -> None:
+        remaining: list[_PendingGetBatch] = []
+        for pending in self._pending_get_batches:
+            if not pending.future.done():
+                remaining.append(pending)
+                continue
+            self._finish_refresh_batch(
+                pending.refresh,
+                self._complete_get_batch(pending),
+            )
+        self._pending_get_batches = remaining
+
+    def _complete_get_batch(self, pending: _PendingGetBatch) -> bool:
+        try:
+            response = pending.future.result()
+        except Exception:
+            return False
+
+        if response is None:
+            return False
+
+        values = response.values
+        if not values or len(values) != len(pending.param_keys):
+            return False
+
+        for key, value_msg in zip(pending.param_keys, values, strict=True):
+            self.params[key].assign(parameter_value_to_python(value_msg))
+        return True
+
+    def _finish_refresh_batch(
+        self,
+        refresh: _RefreshRequest,
+        success: bool,
+    ) -> None:
+        if not success:
+            refresh.all_succeeded = False
+        refresh.remaining -= 1
+        if refresh.remaining > 0:
+            return
+        self.mark_dirty()
+        if refresh.on_done:
+            refresh.on_done(refresh.all_succeeded)
 
     def _complete_get(self, pending: _PendingGet) -> Any | None:
         try:

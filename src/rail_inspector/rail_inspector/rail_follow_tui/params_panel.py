@@ -29,6 +29,6 @@ class ParamsPanel(VerticalScroll):
                 for param in node_params:
                     yield ParamRow(param, id=dom_id(param.key))
 
-    def sync_all(self) -> None:
+    def sync_all(self, *, force: bool = False) -> None:
         for row in self.query(ParamRow):
-            row.sync_from_param()
+            row.sync_from_param(force=force)
