@@ -14,6 +14,7 @@ from tf2_ros import Buffer, TransformException, TransformListener
 from visualization_msgs.msg import MarkerArray
 
 from simple_local_heightmap.heightmap_visualization import build_base_markers
+from simple_local_heightmap.visibility_cleanup import apply_visibility_cleanup
 
 
 class LocalHeightmapNode(Node):
@@ -52,6 +53,12 @@ class LocalHeightmapNode(Node):
         )
         self.max_pose_variance = float(
             self.declare_parameter('max_pose_variance', 0.0).value
+        )
+        self.visibility_cleanup_enabled = bool(
+            self.declare_parameter('visibility_cleanup_enabled', False).value
+        )
+        self.visibility_cleanup_tolerance = float(
+            self.declare_parameter('visibility_cleanup_tolerance', 0.05).value
         )
 
         self._min_range_sq = self.min_range ** 2
@@ -95,6 +102,11 @@ class LocalHeightmapNode(Node):
                 f'timeout {self.front_stale_time_sec:.2f} s on '
                 f'{self.front_clear_marker_topic}'
             )
+        if self.visibility_cleanup_enabled:
+            self.get_logger().info(
+                'Visibility cleanup enabled with '
+                f'tolerance {self.visibility_cleanup_tolerance:.3f} m'
+            )
 
     def odom_callback(self, msg):
         cov = msg.pose.covariance
@@ -134,7 +146,19 @@ class LocalHeightmapNode(Node):
                 points = self._transform_points(points, cloud_transform)
                 points = self._filter_points_by_height(points)
             if len(points) != 0:
-                self._fuse_scan(self._rasterize(points), scan_time)
+                scan_heightmap = self._rasterize(points)
+                if self.visibility_cleanup_enabled:
+                    sensor = cloud_transform.transform.translation
+                    apply_visibility_cleanup(
+                        self.elevation,
+                        self.valid,
+                        scan_heightmap,
+                        (sensor.x, sensor.y, sensor.z),
+                        self._grid_min_corner(),
+                        self.resolution,
+                        self.visibility_cleanup_tolerance,
+                    )
+                self._fuse_scan(scan_heightmap, scan_time)
 
         self._expire_stale_cells(scan_time, robot_transform)
         self.map_pub.publish(self._to_grid_map(stamp))

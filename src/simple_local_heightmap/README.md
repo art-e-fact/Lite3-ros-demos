@@ -12,7 +12,8 @@ time since they were last observed. The grid recenters on the robot as it moves.
 uses the median height per cell. Point clouds are transformed into `map_frame` via TF;
 range filtering uses the cloud's sensor frame. To clear transient hits faster in front of
 the robot, the node can apply a shorter timeout inside a rectangle defined in the robot
-frame.
+frame. Optional visibility cleanup can remove ghost cells along the line of sight
+from the sensor to each observed cell in the current scan.
 
 ### Subscribed topics
 
@@ -82,3 +83,16 @@ expiry so transient obstacles (e.g. the robot's own legs) are cleared quickly.
 | `front_clear_width` | `1.0` | Width of the rectangle (metres, robot Y axis) |
 | `front_clear_offset_x` | `0.75` | Forward offset from the robot origin to the near edge of the rectangle (metres) |
 | `front_stale_time_sec` | `0.35` | Expiry timeout inside the fast-clear rectangle |
+
+#### Visibility cleanup
+
+Ray-based cleanup runs after rasterizing each scan and before fusing it into the map.
+For every observed cell in the current scan, a 2D line is traced from the sensor to
+that cell; older map cells above the ray (not touched by this scan) are invalidated.
+This clears phantom obstacles once the sensor can see past them. Rays start at the
+cloud/sensor frame origin (`cloud_topic` header frame), not `robot_frame`.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `visibility_cleanup_enabled` | `false` | Enable line-of-sight cleanup |
+| `visibility_cleanup_tolerance` | `0.05` | Keep map cells whose height is within this margin above the ray (metres) |
