@@ -23,7 +23,26 @@ def _follow_mode_key(follower_node: str) -> str:
     return f'{follower_node}/follow_mode'
 
 
-def _build_params(follower_node: str) -> dict[str, EditableParam]:
+# Params shown on the Control tab — excluded from the Parameters tab.
+def params_tab_blacklist(follower_node: str) -> frozenset[str]:
+    return frozenset({KEY_SPEED, KEY_GOING, _follow_mode_key(follower_node)})
+
+
+def params_by_node(
+    params: dict[str, EditableParam],
+    blacklist: frozenset[str],
+) -> dict[str, list[EditableParam]]:
+    grouped: dict[str, list[EditableParam]] = {}
+    for key, param in params.items():
+        if key in blacklist:
+            continue
+        grouped.setdefault(param.node_name, []).append(param)
+    for node_params in grouped.values():
+        node_params.sort(key=lambda p: p.param_name)
+    return grouped
+
+
+def _tui_params() -> dict[str, EditableParam]:
     return {
         KEY_SPEED: EditableParam(
             key=KEY_SPEED,
@@ -41,6 +60,26 @@ def _build_params(follower_node: str) -> dict[str, EditableParam]:
             kind='bool',
             description='When true, publish speed in teleop mode.',
         ),
+    }
+
+
+# Dynamic follower params (declare_dynamic in rail_target_follower_node).
+_FOLLOWER_DOUBLES: tuple[tuple[str, float, str], ...] = (
+    ('stale_timeout_sec', 0.5, 'Max age accepted for detector and odometry inputs.'),
+    ('follow_distance', 1.5, 'Desired stopping distance from the follow target.'),
+    ('target_distance_deadband', 0.1, 'Extra no-motion margin beyond follow_distance.'),
+    ('min_linear_x', 0.4, 'Minimum forward command that starts locomotion.'),
+    ('max_linear_x', 0.55, 'Maximum forward body-frame speed (m/s).'),
+    ('distance_error_for_max_speed', 1.5, 'Distance error where speed reaches max_linear_x.'),
+    ('max_linear_y', 0.4, 'Maximum lateral centering speed (m/s).'),
+    ('max_angular_z', 0.5, 'Maximum yaw-rate command (rad/s).'),
+    ('k_center', 1.0, 'Gain: rail center offset → lateral speed.'),
+    ('k_heading', 1.2, 'Gain: tangent yaw error → angular speed.'),
+)
+
+
+def _follower_params(follower_node: str) -> dict[str, EditableParam]:
+    params = {
         _follow_mode_key(follower_node): EditableParam(
             key=_follow_mode_key(follower_node),
             param_type=Parameter.Type.STRING,
@@ -51,6 +90,20 @@ def _build_params(follower_node: str) -> dict[str, EditableParam]:
             description='Follower control mode.',
         ),
     }
+    for name, default, description in _FOLLOWER_DOUBLES:
+        key = f'{follower_node}/{name}'
+        params[key] = EditableParam(
+            key=key,
+            param_type=Parameter.Type.DOUBLE,
+            default=default,
+            local=False,
+            description=description,
+        )
+    return params
+
+
+def _build_params(follower_node: str) -> dict[str, EditableParam]:
+    return {**_tui_params(), **_follower_params(follower_node)}
 
 
 class RosState(Node):
@@ -81,6 +134,8 @@ class RosState(Node):
         self._param_handler = ParameterEventHandler(self)
         self._param_handles = []
         for key, param in self.params.items():
+            if param.local:
+                continue  # local writes don't need event echo sync
             handle = self._param_handler.add_parameter_callback(
                 param.param_name,
                 param.node_name,
@@ -98,6 +153,10 @@ class RosState(Node):
     @property
     def publish_rate_hz(self) -> float:
         return float(self.get_parameter('publish_rate_hz').value)
+
+    @property
+    def follower_node(self) -> str:
+        return self._follower_node
 
     @property
     def follow_mode_key(self) -> str:

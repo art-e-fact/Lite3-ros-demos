@@ -7,17 +7,31 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.validation import Number
-from textual.widgets import Button, Footer, Header, Input, Label, Rule, Static, Switch
+from textual.widgets import (
+    Button,
+    Footer,
+    Header,
+    Input,
+    Label,
+    Rule,
+    Static,
+    Switch,
+    TabbedContent,
+    TabPane,
+)
 
+from rail_inspector.rail_follow_tui.param_row import ParamRow
+from rail_inspector.rail_follow_tui.params_panel import ParamsPanel
 from rail_inspector.rail_follow_tui.ros_state import (
     KEY_GOING,
     KEY_SPEED,
     RosState,
 )
+from rail_inspector.rail_follow_tui.sync_input import sync_input
 
 
 class RailFollowTuiApp(App):
-    """Terminal UI: mode switch, GO/STOP, and speed controls."""
+    """Terminal UI: teleop controls and live parameter reconfigure."""
 
     TITLE = 'Rail Follow'
 
@@ -34,6 +48,10 @@ class RailFollowTuiApp(App):
 
     Footer {
         background: #2d2640;
+    }
+
+    #main-tabs {
+        height: 1fr;
     }
 
     #content {
@@ -119,6 +137,39 @@ class RailFollowTuiApp(App):
         color: #a89fd4;
         text-align: center;
     }
+
+    ParamsPanel {
+        margin: 0 2;
+    }
+
+    .param-row {
+        height: 1;
+        align: center middle;
+        margin: 0 0 1 0;
+    }
+
+    .param-name {
+        width: 28;
+        color: #c8bfe8;
+    }
+
+    .param-input {
+        width: 1fr;
+        height: 1;
+        margin-right: 1;
+        padding: 0 1;
+    }
+
+    .param-set {
+        min-width: 5;
+        height: 1;
+        background: #5b4ca9;
+        padding: 0 1;
+    }
+
+    .param-set:disabled {
+        opacity: 0.35;
+    }
     """
 
     BINDINGS = [
@@ -138,27 +189,31 @@ class RailFollowTuiApp(App):
         auto_mode = follow_mode.get() == 'auto'
 
         yield Header(show_clock=False)
-        with Vertical(id='content'):
-            with Horizontal(classes='mode-row'):
-                yield Label('Autonomous', classes='mode-label')
-                yield Switch(value=auto_mode, id='mode-switch')
-                yield Label('Follow', classes='mode-label')
-            yield Rule(line_style='heavy')
-            with Horizontal(classes='go-row'):
-                yield Button('GO', id='go-button', classes='-go', disabled=auto_mode)
-            with Vertical(classes='speed-panel'):
-                yield Label('Speed (m/s)', classes='speed-label')
-                with Horizontal(classes='speed-row'):
-                    yield Input(
-                        f'{speed.get():.2f}',
-                        type='number',
-                        id='speed-input',
-                        validators=[Number(minimum=speed.min, maximum=speed.max)],
-                    )
-                    yield Button('-', classes='step-button', id='speed-down')
-                    yield Button('+', classes='step-button', id='speed-up')
-                    yield Button('⟲ Reverse', id='reverse-button', variant='default')
-            yield Static(self._status_text(), id='status-line')
+        with TabbedContent(initial='control', id='main-tabs'):
+            with TabPane('Control', id='control'):
+                with Vertical(id='content'):
+                    with Horizontal(classes='mode-row'):
+                        yield Label('Autonomous', classes='mode-label')
+                        yield Switch(value=auto_mode, id='mode-switch')
+                        yield Label('Follow', classes='mode-label')
+                    yield Rule(line_style='heavy')
+                    with Horizontal(classes='go-row'):
+                        yield Button('GO', id='go-button', classes='-go', disabled=auto_mode)
+                    with Vertical(classes='speed-panel'):
+                        yield Label('Speed (m/s)', classes='speed-label')
+                        with Horizontal(classes='speed-row'):
+                            yield Input(
+                                f'{speed.get():.2f}',
+                                type='number',
+                                id='speed-input',
+                                validators=[Number(minimum=speed.min, maximum=speed.max)],
+                            )
+                            yield Button('-', classes='step-button', id='speed-down')
+                            yield Button('+', classes='step-button', id='speed-up')
+                            yield Button('⟲ Reverse', id='reverse-button', variant='default')
+                    yield Static(self._status_text(), id='status-line')
+            with TabPane('Parameters', id='params'):
+                yield ParamsPanel(self.ros)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -172,11 +227,10 @@ class RailFollowTuiApp(App):
         auto_mode = self.ros.params[self.ros.follow_mode_key].get() == 'auto'
         mode = 'Follow' if auto_mode else 'Autonomous'
         motion = 'GO' if going else 'STOP'
-        direction = 'reverse' if speed < 0 else 'forward'
-        return f'{mode} · {motion} · {direction} · {speed:+.2f} m/s'
+        return f'{mode} · {motion} · {speed:+.2f} m/s'
 
     def _update_from_ros(self) -> None:
-        """Refresh all widgets from self.ros.params."""
+        """Refresh widgets from self.ros.params."""
         speed = self.ros.params[KEY_SPEED]
         going = self.ros.params[KEY_GOING]
         follow_mode = self.ros.params[self.ros.follow_mode_key]
@@ -199,11 +253,10 @@ class RailFollowTuiApp(App):
 
         speed_input = self.query_one('#speed-input', Input)
         if not speed_input.has_focus:
-            text = f'{speed.get():.2f}'
-            if speed_input.value != text:
-                speed_input.value = text
+            sync_input(self, speed_input, f'{speed.get():.2f}')
 
         self.query_one('#status-line', Static).update(self._status_text())
+        self.query_one(ParamsPanel).sync_all()
 
     def _tick(self) -> None:
         self.ros.spin_once()
@@ -222,16 +275,29 @@ class RailFollowTuiApp(App):
             param.syncup(value)
         self.call_from_thread(self._update_from_ros)
 
+    @work(thread=True)
+    def _apply_param(self, row: ParamRow) -> None:
+        param = row.param
+        value = row.pending_value()
+        if value is None or value == param.get():
+            return
+        if param.set(value):
+            self.call_from_thread(row.sync_from_param, force=True)
+            return
+        remote = self.ros.fetch_remote_param(param.node_name, param.param_name)
+        if remote is not None:
+            param.syncup(remote)
+        self.call_from_thread(row.sync_from_param, force=True)
+
     @on(Switch.Changed, '#mode-switch')
     def on_mode_changed(self, event: Switch.Changed) -> None:
         mode = 'auto' if event.value else 'teleop'
         follow_mode = self.ros.params[self.ros.follow_mode_key]
-        # Ignore programmatic switch updates from _update_from_ros.
         if follow_mode.get() == mode:
             return
         if event.value:
             self.ros.params[KEY_GOING].set(False)
-        follow_mode.assign(mode)  # optimistic until remote set confirms
+        follow_mode.assign(mode)
         self._apply_follow_mode(mode)
         self._update_from_ros()
 
@@ -261,15 +327,37 @@ class RailFollowTuiApp(App):
         speed.set(speed.get() * -1)
         self._update_from_ros()
 
+    @on(Button.Pressed, '.param-set')
+    def on_param_set(self, event: Button.Pressed) -> None:
+        row = event.button.parent
+        if isinstance(row, ParamRow):
+            self._apply_param(row)
+
+    @on(Input.Submitted, '.param-input')
+    def on_param_input_submitted(self, event: Input.Submitted) -> None:
+        row = event.input.parent
+        if isinstance(row, ParamRow):
+            self._apply_param(row)
+
     @on(Input.Changed, '#speed-input')
     def on_speed_input_changed(self, event: Input.Changed) -> None:
         if not event.validation_result or not event.validation_result.is_valid:
             return
+        speed = self.ros.params[KEY_SPEED]
         try:
-            self.ros.params[KEY_SPEED].set(float(event.value))
-            self._update_from_ros()
+            value = float(event.value)
         except ValueError:
-            pass
+            return
+        if value == speed.get():
+            return
+        speed.set(value)
+        self._update_from_ros()
+
+    @on(Input.Changed, '.param-input')
+    def on_param_input_changed(self, event: Input.Changed) -> None:
+        row = event.input.parent
+        if isinstance(row, ParamRow):
+            row._refresh_set_button()
 
     def action_toggle_go(self) -> None:
         if self.ros.params[self.ros.follow_mode_key].get() == 'teleop':
