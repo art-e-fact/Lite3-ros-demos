@@ -25,6 +25,8 @@ local_heightmap_node:
     front_clear_offset_x: 0.0 # clear from robot body
     front_stale_time_sec: 0.1 # [!] reduce this to actively reflect dynamic moving target
     max_pose_variance: 0.0
+    visibility_cleanup_enabled: false
+    visibility_cleanup_tolerance: 0.05
 
 rail_detector_node:
   ros__parameters:
