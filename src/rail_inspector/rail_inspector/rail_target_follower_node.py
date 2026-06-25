@@ -244,6 +244,9 @@ class RailTargetFollowerNode(Node):
             self.max_linear_y(),
         )
         yaw_error = _normalize_angle(self.latest_tangent_yaw - self.latest_odom_yaw)
+        # Heading correction inverts when traveling backward along the rail.
+        if along_speed < 0.0:
+            yaw_error = -yaw_error
 
         world_vx = along_speed * tangent[0] + lateral_speed * normal[0]
         world_vy = along_speed * tangent[1] + lateral_speed * normal[1]
