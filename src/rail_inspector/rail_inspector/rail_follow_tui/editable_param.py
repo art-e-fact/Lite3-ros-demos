@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from rclpy.parameter import Parameter
 
@@ -43,18 +43,24 @@ class EditableParam:
     def get(self) -> Any:
         return self._value
 
-    def set(self, value: Any) -> bool:
+    def set(
+        self,
+        value: Any,
+        on_done: Callable[[bool], None] | None = None,
+    ) -> bool:
         """Write to the parameter server and update the local copy."""
         value = self._coerce(value)
         if self.local:
             results = self._owner.set_parameters(
                 [Parameter(self.param_name, self.param_type, value)]
             )
-            if not all(result.successful for result in results):
-                return False
-            self._value = value
-            return True
-        return self._owner.set_remote_param(self.node_name, self.param_name, value)
+            success = all(result.successful for result in results)
+            if success:
+                self._value = value
+            if on_done:
+                on_done(success)
+            return success
+        return self._owner.request_set(self.key, value, on_done)
 
     def assign(self, value: Any) -> None:
         """Set local copy without writing ROS (startup / confirmed remote write)."""

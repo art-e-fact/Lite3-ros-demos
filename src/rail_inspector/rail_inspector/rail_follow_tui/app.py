@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from textual import on, work
+from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -268,34 +268,20 @@ class RailFollowTuiApp(App):
 
     def _tick(self) -> None:
         self.ros.spin_once()
+        self.ros.process_pending()
         self.ros.publish_tick()
         if self.ros.is_dirty():
             self._update_from_ros()
             self.ros.clear_dirty()
 
-    @work(thread=True)
     def _apply_follow_mode(self, mode: str) -> None:
-        param = self.ros.params[self.ros.follow_mode_key]
-        if param.set(mode):
-            return
-        value = self.ros.fetch_remote_param(param.node_name, param.param_name)
-        if value is not None:
-            param.syncup(value)
-        self.call_from_thread(self._update_from_ros)
+        self.ros.params[self.ros.follow_mode_key].set(mode)
 
-    @work(thread=True)
     def _apply_param(self, row: ParamRow) -> None:
-        param = row.param
         value = row.pending_value()
-        if value is None or value == param.get():
+        if value is None or value == row.param.get():
             return
-        if param.set(value):
-            self.call_from_thread(row.sync_from_param, force=True)
-            return
-        remote = self.ros.fetch_remote_param(param.node_name, param.param_name)
-        if remote is not None:
-            param.syncup(remote)
-        self.call_from_thread(row.sync_from_param, force=True)
+        row.param.set(value, on_done=lambda _ok: row.sync_from_param(force=True))
 
     @on(Switch.Changed, '#mode-switch')
     def on_mode_changed(self, event: Switch.Changed) -> None:

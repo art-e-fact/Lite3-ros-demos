@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, NamedTuple
 
 import rclpy
@@ -173,6 +175,22 @@ def _build_params(node_names: dict[str, str]) -> dict[str, EditableParam]:
     return params
 
 
+@dataclass
+class _PendingSet:
+    param_key: str
+    value: Any
+    future: Any
+    on_done: Callable[[bool], None] | None
+    generation: int
+
+
+@dataclass
+class _PendingGet:
+    param_key: str
+    future: Any
+    on_done: Callable[[bool], None] | None
+
+
 class RosState(Node):
     """Owns watched parameters, syncs via /parameter_events, publishes teleop Twist."""
 
@@ -202,6 +220,9 @@ class RosState(Node):
         self._dirty_lock = threading.Lock()
         self._set_clients: dict[str, rclpy.client.Client] = {}
         self._get_clients: dict[str, rclpy.client.Client] = {}
+        self._pending_sets: dict[str, _PendingSet] = {}
+        self._pending_gets: list[_PendingGet] = []
+        self._set_generation: dict[str, int] = {}
 
         self._speed_pub = self.create_publisher(Twist, speed_topic, 10)
         self._param_handler = ParameterEventHandler(self)
@@ -250,6 +271,11 @@ class RosState(Node):
     def spin_once(self) -> None:
         rclpy.spin_once(self, timeout_sec=0)
 
+    def process_pending(self) -> None:
+        """Finish in-flight remote param service calls (call after spin_once)."""
+        self._process_pending_sets()
+        self._process_pending_gets()
+
     def publish_tick(self) -> None:
         """Publish teleop speed when going in teleop mode; otherwise stop."""
         going = self.params[KEY_GOING].get()
@@ -262,32 +288,125 @@ class RosState(Node):
     def publish_stop(self) -> None:
         self._publish_speed(0.0)
 
-    def set_remote_param(self, node_name: str, param_name: str, value: Any) -> bool:
-        """Blocking remote write; call from a worker thread."""
-        param = self.params[f'{node_name}/{param_name}']
-        client = self._set_client(node_name)
-        if not client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().warning(f'/{node_name}/set_parameters unavailable')
+    def request_set(
+        self,
+        param_key: str,
+        value: Any,
+        on_done: Callable[[bool], None] | None = None,
+    ) -> bool:
+        """Queue an async remote set; completion runs in process_pending()."""
+        param = self.params[param_key]
+        client = self._set_client(param.node_name)
+        if not client.service_is_ready():
+            self.get_logger().warning(
+                f'/{param.node_name}/set_parameters unavailable'
+            )
+            if on_done:
+                on_done(False)
+            else:
+                # Revert optimistic UI updates (e.g. follow-mode toggle).
+                self._request_get(param_key, None)
             return False
 
         request = SetParameters.Request()
         request.parameters = [
-            Parameter(param_name, param.param_type, value).to_parameter_msg()
+            Parameter(param.param_name, param.param_type, value).to_parameter_msg()
         ]
         future = client.call_async(request)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
-        if not future.done() or future.result() is None:
-            self.get_logger().warning(f'Failed to set {node_name}/{param_name}')
+        # Latest write per param wins if the user toggles quickly.
+        generation = self._set_generation.get(param_key, 0) + 1
+        self._set_generation[param_key] = generation
+        self._pending_sets[param_key] = _PendingSet(
+            param_key, value, future, on_done, generation
+        )
+        return True
+
+    def _process_pending_sets(self) -> None:
+        for param_key in list(self._pending_sets):
+            pending = self._pending_sets[param_key]
+            if not pending.future.done():
+                continue
+            if pending.generation != self._set_generation.get(param_key):
+                del self._pending_sets[param_key]
+                continue
+
+            del self._pending_sets[param_key]
+            if self._complete_set(pending):
+                if pending.on_done:
+                    pending.on_done(True)
+            else:
+                # Pull the authoritative value back after a rejected write.
+                self._request_get(param_key, pending.on_done)
+
+    def _complete_set(self, pending: _PendingSet) -> bool:
+        param = self.params[pending.param_key]
+        try:
+            response = pending.future.result()
+        except Exception:
+            self.get_logger().warning(f'Failed to set {pending.param_key}')
             return False
 
-        results = future.result().results
+        if response is None:
+            self.get_logger().warning(f'Failed to set {pending.param_key}')
+            return False
+
+        results = response.results
         if not results or not results[0].successful:
             reason = results[0].reason if results else 'unknown error'
-            self.get_logger().warning(f'{param_name} rejected: {reason}')
+            self.get_logger().warning(f'{param.param_name} rejected: {reason}')
             return False
 
-        param.assign(value)
+        param.assign(pending.value)
         return True
+
+    def _request_get(
+        self,
+        param_key: str,
+        on_done: Callable[[bool], None] | None,
+    ) -> None:
+        param = self.params[param_key]
+        client = self._get_client(param.node_name)
+        if not client.service_is_ready():
+            self.get_logger().warning(
+                f'/{param.node_name}/get_parameters unavailable'
+            )
+            if on_done:
+                on_done(False)
+            return
+
+        request = GetParameters.Request()
+        request.names = [param.param_name]
+        future = client.call_async(request)
+        self._pending_gets.append(_PendingGet(param_key, future, on_done))
+
+    def _process_pending_gets(self) -> None:
+        remaining: list[_PendingGet] = []
+        for pending in self._pending_gets:
+            if not pending.future.done():
+                remaining.append(pending)
+                continue
+
+            value = self._complete_get(pending)
+            if value is not None:
+                self.params[pending.param_key].syncup(value)
+            if pending.on_done:
+                pending.on_done(value is not None)
+
+        self._pending_gets = remaining
+
+    def _complete_get(self, pending: _PendingGet) -> Any | None:
+        try:
+            response = pending.future.result()
+        except Exception:
+            return None
+
+        if response is None:
+            return None
+
+        values = response.values
+        if not values:
+            return None
+        return parameter_value_to_python(values[0])
 
     def _on_param_changed(self, key: str, param_msg) -> None:
         value = parameter_value_to_python(param_msg.value)
@@ -298,14 +417,16 @@ class RosState(Node):
             if param.local:
                 param.assign(self.get_parameter(param.param_name).value)
             else:
-                value = self._fetch_remote_param(param.node_name, param.param_name)
+                value = self._fetch_remote_param_blocking(
+                    param.node_name, param.param_name
+                )
                 if value is not None:
                     param.syncup(value)
 
-    def fetch_remote_param(self, node_name: str, param_name: str) -> Any | None:
-        return self._fetch_remote_param(node_name, param_name)
-
-    def _fetch_remote_param(self, node_name: str, param_name: str) -> Any | None:
+    def _fetch_remote_param_blocking(
+        self, node_name: str, param_name: str
+    ) -> Any | None:
+        """Blocking fetch used only at startup before the UI tick loop runs."""
         client = self._get_client(node_name)
         if not client.wait_for_service(timeout_sec=1.0):
             self.get_logger().warning(f'/{node_name}/get_parameters unavailable')
