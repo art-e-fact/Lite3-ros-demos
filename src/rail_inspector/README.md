@@ -106,3 +106,22 @@ ros2 run rail_inspector rail_target_follower_node --ros-args \
   -p follow_rail_speed_topic:=/follow_rail_speed \
   -p max_linear_x:=0.55
 ```
+
+## rail_follow_tui
+
+Terminal UI for switching follow mode and driving the robot along the rail in teleop.
+
+Launch the rail-follow stack first, then run the TUI in a second terminal:
+
+```bash
+pixi run nav-rail-follow-real
+pixi run rail-follow-tui
+```
+
+Controls:
+
+- **Switch**: Autonomous (`teleop`) vs Follow (`auto`)
+- **GO / STOP**: publishes `Twist.linear.x` on `/follow_rail_speed` at 10 Hz (Autonomous mode only)
+- **Speed input** and **+ / −**: set command magnitude (m/s)
+- **Reverse**: flip travel direction
+- **Space**: toggle GO/STOP, **R**: reverse, **Q**: quit
