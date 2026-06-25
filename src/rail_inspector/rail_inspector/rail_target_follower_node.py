@@ -24,103 +24,134 @@ class RailTargetFollowerNode(Node):
     def __init__(self):
         super().__init__('rail_target_follower_node')
 
-        def declare(name, default, description):
+        def declare(name, default, description, read_only=False):
             return self.declare_parameter(
                 name,
                 default,
-                ParameterDescriptor(description=description),
+                ParameterDescriptor(description=description, read_only=read_only),
             ).value
+
+        def declare_dynamic(name, default, description, cast=None):
+            self.declare_parameter(
+                name,
+                default,
+                ParameterDescriptor(description=description),
+            )
+
+            def getter():
+                value = self.get_parameter(name).value
+                return cast(value) if cast is not None else value
+
+            return getter
 
         self.cmd_vel_topic = declare(
             'cmd_vel_topic',
             '/cmd_vel',
             'Output Twist topic consumed by the RL deploy twist interface.',
+            read_only=True,
         )
         self.odom_topic = declare(
             'odom_topic',
             '/odom',
             'Odometry topic used for robot yaw and body-frame conversion.',
+            read_only=True,
         )
         self.center_offset_topic = declare(
             'center_offset_topic',
             '/rail_detector/center_offset',
             'Input topic with the signed rail center offset in meters.',
+            read_only=True,
         )
         self.tangent_yaw_topic = declare(
             'tangent_yaw_topic',
             '/rail_detector/tangent_yaw',
             'Input topic with the detected rail tangent yaw in radians.',
+            read_only=True,
         )
         self.target_distance_topic = declare(
             'target_distance_topic',
             '/rail_detector/target_distance',
             'Input topic with the target distance in meters; negative means invalid.',
+            read_only=True,
         )
-        self.follow_mode = declare(
+        self.follow_mode = declare_dynamic(
             'follow_mode',
             'auto',
             'Control mode: "auto" (follows target automatically) or "teleop" (uses follow_rail_speed).',
+            cast=str,
         )
         self.follow_rail_speed_topic = declare(
             'follow_rail_speed_topic',
             '/follow_rail_speed',
             'Input Twist topic for teleop forward speed command along the rail.',
+            read_only=True,
         )
         self.control_rate_hz = float(declare(
             'control_rate_hz',
             15.0,
             'Control loop rate used to publish cmd_vel.',
+            read_only=True,
         ))
-        self.stale_timeout_sec = float(declare(
+        self.stale_timeout_sec = declare_dynamic(
             'stale_timeout_sec',
             0.5,
             'Maximum wall-time age accepted for detector and odometry inputs.',
-        ))
-        self.follow_distance = float(declare(
+            cast=float,
+        )
+        self.follow_distance = declare_dynamic(
             'follow_distance',
             1.5,
             'Desired stopping distance to keep from the detected target.',
-        ))
-        self.target_distance_deadband = float(declare(
+            cast=float,
+        )
+        self.target_distance_deadband = declare_dynamic(
             'target_distance_deadband',
             0.1,
             'Additional distance margin before forward motion resumes.',
-        ))
-        self.min_linear_x = float(declare(
+            cast=float,
+        )
+        self.min_linear_x = declare_dynamic(
             'min_linear_x',
             0.4,
             'Minimum forward command that reliably starts locomotion.',
-        ))
-        self.max_linear_x = float(declare(
+            cast=float,
+        )
+        self.max_linear_x = declare_dynamic(
             'max_linear_x',
             0.55,
             'Maximum forward body-frame speed command in meters per second.',
-        ))
-        self.distance_error_for_max_speed = float(declare(
+            cast=float,
+        )
+        self.distance_error_for_max_speed = declare_dynamic(
             'distance_error_for_max_speed',
             1.5,
             'Distance error at which forward speed reaches max_linear_x.',
-        ))
-        self.max_linear_y = float(declare(
+            cast=float,
+        )
+        self.max_linear_y = declare_dynamic(
             'max_linear_y',
             0.4,
             'Maximum lateral body-frame speed command in meters per second.',
-        ))
-        self.max_angular_z = float(declare(
+            cast=float,
+        )
+        self.max_angular_z = declare_dynamic(
             'max_angular_z',
             0.5,
             'Maximum yaw-rate command in radians per second.',
-        ))
-        self.k_center = float(declare(
+            cast=float,
+        )
+        self.k_center = declare_dynamic(
             'k_center',
             1.0,
             'Gain that converts rail center offset into lateral correction speed.',
-        ))
-        self.k_heading = float(declare(
+            cast=float,
+        )
+        self.k_heading = declare_dynamic(
             'k_heading',
             1.2,
             'Gain that converts rail tangent yaw error into angular speed.',
-        ))
+            cast=float,
+        )
 
         self.latest_center_offset = float('nan')
         self.latest_tangent_yaw = float('nan')
@@ -146,7 +177,7 @@ class RailTargetFollowerNode(Node):
         )
 
         self.get_logger().info(
-            f'Following rails in {self.follow_mode} mode from {self.center_offset_topic}, {self.tangent_yaw_topic}; '
+            f'Following rails in {self.follow_mode()} mode from {self.center_offset_topic}, {self.tangent_yaw_topic}; '
             f'publishing Twist on {self.cmd_vel_topic}'
         )
 
@@ -182,15 +213,15 @@ class RailTargetFollowerNode(Node):
             self.get_logger().warn('Rail line is invalid; stopping.', throttle_duration_sec=2.0)
             return
 
-        if self.follow_mode == 'teleop':
-            along_speed = _clamp(self.latest_teleop_speed, -self.max_linear_x, self.max_linear_x)
+        if self.follow_mode() == 'teleop':
+            along_speed = _clamp(self.latest_teleop_speed, -self.max_linear_x(), self.max_linear_x())
         else:
             if not math.isfinite(self.latest_target_distance) or self.latest_target_distance < 0.0:
                 self.publish_stop()
                 self.get_logger().warn('Follow target is unavailable; stopping.', throttle_duration_sec=2.0)
                 return
 
-            distance_error = self.latest_target_distance - self.follow_distance
+            distance_error = self.latest_target_distance - self.follow_distance()
             if distance_error <= 0.0:
                 self.publish_stop()
                 return
@@ -208,9 +239,9 @@ class RailTargetFollowerNode(Node):
         normal = (-tangent[1], tangent[0])
 
         lateral_speed = _clamp(
-            -self.k_center * self.latest_center_offset,
-            -self.max_linear_y,
-            self.max_linear_y,
+            -self.k_center() * self.latest_center_offset,
+            -self.max_linear_y(),
+            self.max_linear_y(),
         )
         yaw_error = _normalize_angle(self.latest_tangent_yaw - self.latest_odom_yaw)
 
@@ -219,12 +250,12 @@ class RailTargetFollowerNode(Node):
         body_vx, body_vy = self._world_to_body(world_vx, world_vy, self.latest_odom_yaw)
 
         cmd = Twist()
-        cmd.linear.x = _clamp(body_vx, -self.max_linear_x, self.max_linear_x)
-        cmd.linear.y = _clamp(body_vy, -self.max_linear_y, self.max_linear_y)
+        cmd.linear.x = _clamp(body_vx, -self.max_linear_x(), self.max_linear_x())
+        cmd.linear.y = _clamp(body_vy, -self.max_linear_y(), self.max_linear_y())
         cmd.angular.z = _clamp(
-            self.k_heading * yaw_error,
-            -self.max_angular_z,
-            self.max_angular_z,
+            self.k_heading() * yaw_error,
+            -self.max_angular_z(),
+            self.max_angular_z(),
         )
         self.cmd_pub.publish(cmd)
 
@@ -232,26 +263,27 @@ class RailTargetFollowerNode(Node):
         self.cmd_pub.publish(Twist())
 
     def _compute_along_speed(self, distance_error):
-        effective_error = distance_error - self.target_distance_deadband
+        effective_error = distance_error - self.target_distance_deadband()
         if effective_error <= 0.0:
             return 0.0
 
-        min_linear_x = _clamp(self.min_linear_x, 0.0, self.max_linear_x)
-        ramp_distance = max(1e-6, self.distance_error_for_max_speed)
+        min_linear_x = _clamp(self.min_linear_x(), 0.0, self.max_linear_x())
+        ramp_distance = max(1e-6, self.distance_error_for_max_speed())
         ramp = _clamp(effective_error / ramp_distance, 0.0, 1.0)
-        return min_linear_x + ramp * (self.max_linear_x - min_linear_x)
+        return min_linear_x + ramp * (self.max_linear_x() - min_linear_x)
 
     def _is_stale(self, now):
+        stale_timeout_sec = self.stale_timeout_sec()
         base_stale = (
-            now - self.center_offset_walltime > self.stale_timeout_sec
-            or now - self.tangent_yaw_walltime > self.stale_timeout_sec
-            or now - self.odom_walltime > self.stale_timeout_sec
+            now - self.center_offset_walltime > stale_timeout_sec
+            or now - self.tangent_yaw_walltime > stale_timeout_sec
+            or now - self.odom_walltime > stale_timeout_sec
         )
         if base_stale:
             return True
-        if self.follow_mode == 'teleop':
-            return now - self.teleop_speed_walltime > self.stale_timeout_sec
-        return now - self.target_distance_walltime > self.stale_timeout_sec
+        if self.follow_mode() == 'teleop':
+            return now - self.teleop_speed_walltime > stale_timeout_sec
+        return now - self.target_distance_walltime > stale_timeout_sec
 
     @staticmethod
     def _world_to_body(world_vx, world_vy, yaw):
