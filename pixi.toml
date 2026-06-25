@@ -123,6 +123,11 @@ cmd = "pixi run -e nav ros2 run teleop_twist_keyboard teleop_twist_keyboard --ro
 default-environment = "nav"
 depends-on = ["build-nav"]
 
+[tasks.rail-follow-tui]
+cmd = "ros2 run rail_inspector rail_follow_tui"
+default-environment = "nav"
+depends-on = ["build-nav"]
+
 [tasks.rerun-logger]
 cmd = "ros2 run rerun_logger rerun_logger"
 default-environment = "nav"
@@ -217,6 +222,7 @@ pcl = ">=1.15.1,<2"
 sysroot_linux-aarch64 = ">=2.17,<3"
 ros-jazzy-pcl-conversions = ">=2.6.2,<3"
 ros-jazzy-rosbag2 = ">=0.26.9,<0.27"
+textual = ">=8.2.7,<9"
 
 [feature.test.pypi-dependencies]
 artefacts-toolkit = ">=1.0.0, <2"

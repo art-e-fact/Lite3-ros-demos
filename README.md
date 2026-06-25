@@ -74,3 +74,12 @@ To visualize heightmaps
 ```bash
 pixi run rerun-logger --log_heightmap --use_static_heightmap
 ```
+
+## TUI Interface
+To launch the terminal user interface run:
+```
+pixi run rail-follow-tui
+```
+The `Control` tab gives access to the main follow settings while the `Parameters` tab allows dynamically update node parameters.
+
+The state of the UI is kept in the ROS parameter server so it's safe to relaunch it or run multiple instances simultaneously.

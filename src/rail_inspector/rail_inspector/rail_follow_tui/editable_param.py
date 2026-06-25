@@ -73,8 +73,13 @@ class EditableParam:
             value = float(value)
             if self.min is not None and self.max is not None:
                 value = max(self.min, min(self.max, value))
+        elif self.param_type == Parameter.Type.INTEGER:
+            value = int(round(float(value)))
         elif self.param_type == Parameter.Type.BOOL:
-            value = bool(value)
+            if isinstance(value, str):
+                value = value.strip().lower() in ('1', 'true', 'yes', 'on')
+            else:
+                value = bool(value)
         elif self.param_type == Parameter.Type.STRING:
             value = str(value)
             if self.options and value not in self.options:

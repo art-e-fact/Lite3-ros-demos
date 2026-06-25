@@ -160,6 +160,14 @@ class RailFollowTuiApp(App):
         padding: 0 1;
     }
 
+    .param-switch {
+        width: 1fr;
+        height: 1;
+        margin: 0 1 0 0;
+        padding: 0;
+        border: none;
+    }
+
     .param-set {
         min-width: 5;
         height: 1;
@@ -358,6 +366,16 @@ class RailFollowTuiApp(App):
         row = event.input.parent
         if isinstance(row, ParamRow):
             row._refresh_set_button()
+
+    @on(Switch.Changed, '.param-switch')
+    def on_param_switch_changed(self, event: Switch.Changed) -> None:
+        row = event.switch.parent
+        if not isinstance(row, ParamRow):
+            return
+        value = row.pending_value()
+        if value is None or value == row.param.get():
+            return
+        self._apply_param(row)
 
     def action_toggle_go(self) -> None:
         if self.ros.params[self.ros.follow_mode_key].get() == 'teleop':

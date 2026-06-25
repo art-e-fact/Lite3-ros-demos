@@ -7,6 +7,7 @@ import rclpy
 import sensor_msgs_py.point_cloud2 as pc2
 from grid_map_msgs.msg import GridMap
 from nav_msgs.msg import Odometry
+from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import Float32, Float32MultiArray, MultiArrayDimension
@@ -21,48 +22,154 @@ class LocalHeightmapNode(Node):
     def __init__(self):
         super().__init__('local_heightmap_node')
 
-        self.cloud_topic = self.declare_parameter('cloud_topic', '/mid360/points').value
-        self.odom_topic = self.declare_parameter('odom_topic', '/odom').value
-        self.output_topic = self.declare_parameter('heightmap_topic', '/local_heightmap').value
+        def declare(name, default, description, read_only=False):
+            return self.declare_parameter(
+                name,
+                default,
+                ParameterDescriptor(description=description, read_only=read_only),
+            ).value
+
+        def declare_dynamic(name, default, description, cast=None):
+            self.declare_parameter(
+                name,
+                default,
+                ParameterDescriptor(description=description),
+            )
+
+            def getter():
+                value = self.get_parameter(name).value
+                return cast(value) if cast is not None else value
+
+            return getter
+
+        self.cloud_topic = declare(
+            'cloud_topic',
+            '/mid360/points',
+            'Input PointCloud2 topic.',
+            read_only=True,
+        )
+        self.odom_topic = declare(
+            'odom_topic',
+            '/odom',
+            'Odometry topic used for pose variance gating.',
+            read_only=True,
+        )
+        self.output_topic = declare(
+            'heightmap_topic',
+            '/local_heightmap',
+            'Output GridMap topic.',
+            read_only=True,
+        )
         self.front_clear_marker_topic = '/local_heightmap/front_clear_markers'
         self.height_scan_perf_topic = '/perf/height_scan'
-        self.map_frame = self.declare_parameter('map_frame', 'odom').value
-        self.robot_frame = self.declare_parameter('robot_frame', 'base_link').value
-        self.resolution = float(self.declare_parameter('resolution', 0.05).value)
-        self.length_x = float(self.declare_parameter('length_x', 3.0).value)
-        self.length_y = float(self.declare_parameter('length_y', 3.0).value)
-        self.min_z = float(self.declare_parameter('min_z', -1.0).value)
-        self.max_z = float(self.declare_parameter('max_z', 2.0).value)
-        self.min_range = float(self.declare_parameter('min_range', 0.1).value)
-        self.max_range = float(self.declare_parameter('max_range', 12.0).value)
-        self.stale_time_sec = float(self.declare_parameter('stale_time_sec', 100.0).value)
-        self.front_clear_enabled = bool(
-            self.declare_parameter('front_clear_enabled', False).value
+        self.map_frame = declare(
+            'map_frame',
+            'odom',
+            'TF frame used for the published height map.',
+            read_only=True,
         )
-        self.front_clear_length = float(
-            self.declare_parameter('front_clear_length', 2.5).value
+        self.robot_frame = declare(
+            'robot_frame',
+            'base_link',
+            'TF frame used for front-clear region alignment.',
+            read_only=True,
         )
-        self.front_clear_width = float(
-            self.declare_parameter('front_clear_width', 1.0).value
+        self.resolution = float(declare(
+            'resolution',
+            0.05,
+            'Grid cell size in meters; fixed after node startup.',
+            read_only=True,
+        ))
+        self.length_x = float(declare(
+            'length_x',
+            3.0,
+            'Grid extent along X in meters; fixed after node startup.',
+            read_only=True,
+        ))
+        self.length_y = float(declare(
+            'length_y',
+            3.0,
+            'Grid extent along Y in meters; fixed after node startup.',
+            read_only=True,
+        ))
+        self.min_z = declare_dynamic(
+            'min_z',
+            -1.0,
+            'Minimum point height in the map frame.',
+            cast=float,
         )
-        self.front_clear_offset_x = float(
-            self.declare_parameter('front_clear_offset_x', 0.75).value
+        self.max_z = declare_dynamic(
+            'max_z',
+            2.0,
+            'Maximum point height in the map frame.',
+            cast=float,
         )
-        self.front_stale_time_sec = float(
-            self.declare_parameter('front_stale_time_sec', 0.35).value
+        self.min_range = declare_dynamic(
+            'min_range',
+            0.1,
+            'Minimum sensor range in meters.',
+            cast=float,
         )
-        self.max_pose_variance = float(
-            self.declare_parameter('max_pose_variance', 0.0).value
+        self.max_range = declare_dynamic(
+            'max_range',
+            12.0,
+            'Maximum sensor range in meters.',
+            cast=float,
         )
-        self.visibility_cleanup_enabled = bool(
-            self.declare_parameter('visibility_cleanup_enabled', False).value
+        self.stale_time_sec = declare_dynamic(
+            'stale_time_sec',
+            100.0,
+            'Age after which non-front cells are cleared.',
+            cast=float,
         )
-        self.visibility_cleanup_tolerance = float(
-            self.declare_parameter('visibility_cleanup_tolerance', 0.05).value
+        self.front_clear_enabled = declare_dynamic(
+            'front_clear_enabled',
+            False,
+            'Enable faster expiry in the front-clear rectangle.',
+            cast=bool,
         )
-
-        self._min_range_sq = self.min_range ** 2
-        self._max_range_sq = self.max_range ** 2
+        self.front_clear_length = declare_dynamic(
+            'front_clear_length',
+            2.5,
+            'Front-clear rectangle length in meters.',
+            cast=float,
+        )
+        self.front_clear_width = declare_dynamic(
+            'front_clear_width',
+            1.0,
+            'Front-clear rectangle width in meters.',
+            cast=float,
+        )
+        self.front_clear_offset_x = declare_dynamic(
+            'front_clear_offset_x',
+            0.75,
+            'Front-clear rectangle start offset along robot X.',
+            cast=float,
+        )
+        self.front_stale_time_sec = declare_dynamic(
+            'front_stale_time_sec',
+            0.35,
+            'Age after which front-clear cells are cleared.',
+            cast=float,
+        )
+        self.max_pose_variance = declare_dynamic(
+            'max_pose_variance',
+            0.0,
+            'Skip scans when pose variance exceeds this; 0 disables the gate.',
+            cast=float,
+        )
+        self.visibility_cleanup_enabled = declare_dynamic(
+            'visibility_cleanup_enabled',
+            False,
+            'Remove cells occluded by newly observed geometry.',
+            cast=bool,
+        )
+        self.visibility_cleanup_tolerance = declare_dynamic(
+            'visibility_cleanup_tolerance',
+            0.05,
+            'Height tolerance used by visibility cleanup.',
+            cast=float,
+        )
 
         self.width = max(1, int(round(self.length_x / self.resolution)))
         self.height = max(1, int(round(self.length_y / self.resolution)))
@@ -94,18 +201,18 @@ class LocalHeightmapNode(Node):
             f'Publishing {self.length_x:.2f} x {self.length_y:.2f} m height maps at '
             f'{self.resolution:.3f} m/cell in {self.map_frame} from {self.cloud_topic}'
         )
-        if self.front_clear_enabled:
+        if self.front_clear_enabled():
             self.get_logger().info(
                 'Front fast-clear enabled with '
-                f'{self.front_clear_length:.2f} x {self.front_clear_width:.2f} m '
-                f'rectangle, offset {self.front_clear_offset_x:.2f} m, '
-                f'timeout {self.front_stale_time_sec:.2f} s on '
+                f'{self.front_clear_length():.2f} x {self.front_clear_width():.2f} m '
+                f'rectangle, offset {self.front_clear_offset_x():.2f} m, '
+                f'timeout {self.front_stale_time_sec():.2f} s on '
                 f'{self.front_clear_marker_topic}'
             )
-        if self.visibility_cleanup_enabled:
+        if self.visibility_cleanup_enabled():
             self.get_logger().info(
                 'Visibility cleanup enabled with '
-                f'tolerance {self.visibility_cleanup_tolerance:.3f} m'
+                f'tolerance {self.visibility_cleanup_tolerance():.3f} m'
             )
 
     def odom_callback(self, msg):
@@ -113,8 +220,8 @@ class LocalHeightmapNode(Node):
         self.latest_pose_variance = max(cov[0], cov[7], cov[35])
 
     def cloud_callback(self, msg):
-        if self.max_pose_variance > 0.0:
-            if self.latest_pose_variance > self.max_pose_variance:
+        if self.max_pose_variance() > 0.0:
+            if self.latest_pose_variance > self.max_pose_variance():
                 return
 
         t0 = time.perf_counter()
@@ -147,7 +254,7 @@ class LocalHeightmapNode(Node):
                 points = self._filter_points_by_height(points)
             if len(points) != 0:
                 scan_heightmap = self._rasterize(points)
-                if self.visibility_cleanup_enabled:
+                if self.visibility_cleanup_enabled():
                     sensor = cloud_transform.transform.translation
                     apply_visibility_cleanup(
                         self.elevation,
@@ -156,7 +263,7 @@ class LocalHeightmapNode(Node):
                         (sensor.x, sensor.y, sensor.z),
                         self._grid_min_corner(),
                         self.resolution,
-                        self.visibility_cleanup_tolerance,
+                        self.visibility_cleanup_tolerance(),
                     )
                 self._fuse_scan(scan_heightmap, scan_time)
 
@@ -180,12 +287,14 @@ class LocalHeightmapNode(Node):
         return np.asarray(list(points), dtype=np.float32).reshape(-1, 3)
 
     def _filter_points_by_range(self, points):
+        min_range_sq = self.min_range() ** 2
+        max_range_sq = self.max_range() ** 2
         r2 = np.einsum('ij,ij->i', points, points)
-        valid = (r2 >= self._min_range_sq) & (r2 <= self._max_range_sq)
+        valid = (r2 >= min_range_sq) & (r2 <= max_range_sq)
         return points[valid]
 
     def _filter_points_by_height(self, points):
-        valid = (points[:, 2] >= self.min_z) & (points[:, 2] <= self.max_z)
+        valid = (points[:, 2] >= self.min_z()) & (points[:, 2] <= self.max_z())
         return points[valid]
 
     def _rasterize(self, points):
@@ -222,27 +331,28 @@ class LocalHeightmapNode(Node):
 
     def _expire_stale_cells(self, scan_time, robot_transform):
         front_mask = self._front_clear_mask(robot_transform)
-        if self.stale_time_sec <= 0.0 and front_mask is None:
+        stale_time_sec = self.stale_time_sec()
+        if stale_time_sec <= 0.0 and front_mask is None:
             return
 
         age = scan_time - self.last_seen
         stale = np.zeros_like(self.valid, dtype=bool)
-        if self.stale_time_sec > 0.0:
+        if stale_time_sec > 0.0:
             if front_mask is None:
-                stale = self.valid & (age > self.stale_time_sec)
+                stale = self.valid & (age > stale_time_sec)
             else:
-                stale = self.valid & (~front_mask) & (age > self.stale_time_sec)
+                stale = self.valid & (~front_mask) & (age > stale_time_sec)
         if front_mask is not None:
-            stale |= self.valid & front_mask & (age > self.front_stale_time_sec)
+            stale |= self.valid & front_mask & (age > self.front_stale_time_sec())
         self.elevation[stale] = np.nan
         self.valid[stale] = False
 
     def _front_clear_active(self):
         return (
-            self.front_clear_enabled
-            and self.front_stale_time_sec > 0.0
-            and self.front_clear_length > 0.0
-            and self.front_clear_width > 0.0
+            self.front_clear_enabled()
+            and self.front_stale_time_sec() > 0.0
+            and self.front_clear_length() > 0.0
+            and self.front_clear_width() > 0.0
         )
 
     def _front_clear_mask(self, robot_transform):
@@ -273,9 +383,9 @@ class LocalHeightmapNode(Node):
         x_local = robot_frame[..., 0]
         y_local = robot_frame[..., 1]
         return (
-            (x_local >= self.front_clear_offset_x)
-            & (x_local <= self.front_clear_offset_x + self.front_clear_length)
-            & (np.abs(y_local) <= 0.5 * self.front_clear_width)
+            (x_local >= self.front_clear_offset_x())
+            & (x_local <= self.front_clear_offset_x() + self.front_clear_length())
+            & (np.abs(y_local) <= 0.5 * self.front_clear_width())
         )
 
     def _front_clear_area(self, robot_transform):
@@ -289,9 +399,9 @@ class LocalHeightmapNode(Node):
             'orientation': np.array(
                 [rotation.x, rotation.y, rotation.z, rotation.w], dtype=np.float32
             ),
-            'offset_x': self.front_clear_offset_x,
-            'length': self.front_clear_length,
-            'width': self.front_clear_width,
+            'offset_x': self.front_clear_offset_x(),
+            'length': self.front_clear_length(),
+            'width': self.front_clear_width(),
         }
 
     def _shift_grid_if_needed(self, robot_x, robot_y):
