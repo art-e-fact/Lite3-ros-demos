@@ -113,8 +113,13 @@ cmd = "ros2 launch rail_inspector rail_target_follow_real.launch.py"
 default-environment = "nav"
 depends-on = ["build-nav"]
 
-[tasks.nav-rail-follow-real-rerun]
-cmd = "ros2 launch rail_inspector rail_target_follow_real.launch.py & ros2 run rerun_logger rerun_logger --headless --onboard-fix"
+[tasks.nav-rail-follow-real-auto-rerun]
+cmd = "ros2 launch rail_inspector rail_target_follow_real.launch.py params_file:=/home/ysc/Desktop/projects/Lite3-ros-demos/src/rail_inspector/config/rail_follow_office_real_auto.yaml & ros2 run rerun_logger rerun_logger --headless --onboard-fix"
+default-environment = "nav"
+depends-on = ["build-nav"]
+
+[tasks.nav-rail-follow-real-push-rerun]
+cmd = "ros2 launch rail_inspector rail_target_follow_real.launch.py params_file:=/home/ysc/Desktop/projects/Lite3-ros-demos/src/rail_inspector/config/rail_follow_office_real_push.yaml & ros2 run rerun_logger rerun_logger --headless --onboard-fix"
 default-environment = "nav"
 depends-on = ["build-nav"]
 
