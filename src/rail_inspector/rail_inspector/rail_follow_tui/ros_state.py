@@ -521,36 +521,44 @@ class RosState(Node):
         self.params[key].syncup(value)
 
     def _sync_remote_params(self) -> None:
+        remote_by_node: dict[str, list[str]] = {}
         for key, param in self.params.items():
             if param.local:
                 param.assign(self.get_parameter(param.param_name).value)
             else:
-                value = self._fetch_remote_param_blocking(
-                    param.node_name, param.param_name
-                )
-                if value is not None:
-                    param.syncup(value)
+                remote_by_node.setdefault(param.node_name, []).append(key)
 
-    def _fetch_remote_param_blocking(
-        self, node_name: str, param_name: str
-    ) -> Any | None:
+        for node_name, param_keys in remote_by_node.items():
+            param_names = [self.params[key].param_name for key in param_keys]
+            values = self._fetch_remote_params_blocking(node_name, param_names)
+            if values is None:
+                continue
+            for key, value in zip(param_keys, values, strict=True):
+                self.params[key].syncup(value)
+
+    def _fetch_remote_params_blocking(
+        self, node_name: str, param_names: list[str]
+    ) -> list[Any] | None:
         """Blocking fetch used only at startup before the UI tick loop runs."""
+        if not param_names:
+            return []
+
         client = self._get_client(node_name)
         if not client.wait_for_service(timeout_sec=1.0):
             self.get_logger().warning(f'/{node_name}/get_parameters unavailable')
             return None
 
         request = GetParameters.Request()
-        request.names = [param_name]
+        request.names = param_names
         future = client.call_async(request)
         rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
         if not future.done() or future.result() is None:
             return None
 
         values = future.result().values
-        if not values:
+        if not values or len(values) != len(param_names):
             return None
-        return parameter_value_to_python(values[0])
+        return [parameter_value_to_python(v) for v in values]
 
     def _publish_speed(self, linear_x: float) -> None:
         msg = Twist()
