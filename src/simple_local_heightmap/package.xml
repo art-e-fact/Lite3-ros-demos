@@ -12,6 +12,7 @@
   <exec_depend>grid_map_rviz_plugin</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>rclpy</exec_depend>
+  <exec_depend>python3-numba</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>sensor_msgs_py</exec_depend>
   <exec_depend>std_msgs</exec_depend>

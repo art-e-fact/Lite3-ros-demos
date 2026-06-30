@@ -70,7 +70,7 @@ def _front_clear_markers(frame_id, stamp, front_clear_area):
     outline.id = 2
     outline.type = Marker.LINE_STRIP
     outline.action = Marker.ADD
-    outline.scale.x = 0.03
+    outline.scale.x = 0.01
     outline.color.r = 1.0
     outline.color.g = 0.6
     outline.color.b = 0.2

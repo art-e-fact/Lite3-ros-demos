@@ -2,10 +2,11 @@
 authors = [
     "Tomo Norman <tomo@artefacts.com>",
     "Andras Polgar <andras@artefacts.com>",
+    "Bach Nguyen <bach@artefacts.com>",
 ]
 channels = ["https://prefix.dev/conda-forge"]
 name = "lite3-workspace"
-platforms = ["linux-64", "osx-arm64"]
+platforms = ["linux-64", "osx-arm64", "linux-aarch64"]
 version = "0.1.0"
 
 [tasks]
@@ -18,14 +19,58 @@ build = [
 cmd = "git submodule update --init --recursive"
 
 [tasks.build-nav]
-cmd = "colcon build --symlink-install --build-base rosbuild/nav/build --install-base rosbuild/nav/install --test-result-base rosbuild/nav/test_results --packages-skip simulation_package"
+cmd = [
+    "colcon",
+    "build",
+    "--symlink-install",
+    "--build-base", "rosbuild/nav/build",
+    "--install-base", "rosbuild/nav/install",
+    "--test-result-base", "rosbuild/nav/test_results",
+    # simulation_package is built in the sim environment; livox_ros_driver2 on real hardware only.
+    "--packages-skip", "simulation_package", "livox_ros_driver2",
+    "--cmake-args",
+    "-DROS_EDITION=ROS2",
+    "-DDISTRO_ROS=jazzy",
+    "-DBUILD_TESTING=OFF",
+]
 inputs = ["src"]
+outputs = ["rosbuild/nav/install"]
+default-environment = "nav"
+depends-on = ["setup", "build-livox-ros-driver2"]
+
+# No-op on platforms without real Livox hardware; linux-aarch64 overrides below.
+[tasks.build-livox-ros-driver2]
+cmd = "true"
+
+# Real Lite3 hardware (linux-aarch64): build the Livox lidar driver separately.
+[target.linux-aarch64.tasks.build-livox-ros-driver2]
+cmd = [
+    "colcon",
+    "build",
+    "--symlink-install",
+    "--build-base", "rosbuild/nav/build",
+    "--install-base", "rosbuild/nav/install",
+    "--test-result-base", "rosbuild/nav/test_results",
+    "--packages-select", "livox_ros_driver2",
+    "--cmake-args",
+    "-DROS_EDITION=ROS2",
+    "-DDISTRO_ROS=jazzy",
+    "-DBUILD_TESTING=OFF",
+]
+inputs = ["src/livox_ros_driver2"]
 outputs = ["rosbuild/nav/install"]
 default-environment = "nav"
 depends-on = ["setup"]
 
 [tasks.build-sim]
-cmd = "colcon build --build-base rosbuild/sim/build --install-base rosbuild/sim/install --test-result-base rosbuild/sim/test_results --packages-select simulation_package drdds"
+cmd = [
+    "colcon",
+    "build",
+    "--build-base", "rosbuild/sim/build",
+    "--install-base", "rosbuild/sim/install",
+    "--test-result-base", "rosbuild/sim/test_results",
+    "--packages-select", "simulation_package", "drdds",
+]
 inputs = ["src/simulation_package", "src/drdds"]
 outputs = ["rosbuild/sim/install"]
 default-environment = "sim"
@@ -59,14 +104,34 @@ default-environment = "sim"
 depends-on = ["build"]
 
 [tasks.nav-rail-follow]
-cmd = "ros2 launch rail_inspector rail_target_follow.launch.py enable_heightmap:=true cloud_topic:=/mid360/points follow_distance:=1.5 min_linear_x:=0.35 max_linear_x:=0.45 stale_timeout_sec:=0.75 use_sim_time:=true"
+cmd = "ros2 launch rail_inspector rail_target_follow.launch.py"
 default-environment = "nav"
-depends-on = ["build"]
+depends-on = ["build-nav"]
+
+[tasks.nav-rail-follow-real]
+cmd = "ros2 launch rail_inspector rail_target_follow_real.launch.py"
+default-environment = "nav"
+depends-on = ["build-nav"]
+
+[tasks.nav-rail-follow-real-auto-rerun]
+cmd = "ros2 launch rail_inspector rail_target_follow_real.launch.py params_file:=/home/ysc/Desktop/projects/Lite3-ros-demos/src/rail_inspector/config/rail_follow_office_real_auto.yaml & ros2 run rerun_logger rerun_logger --headless --onboard-fix"
+default-environment = "nav"
+depends-on = ["build-nav"]
+
+[tasks.nav-rail-follow-real-push-rerun]
+cmd = "ros2 launch rail_inspector rail_target_follow_real.launch.py params_file:=/home/ysc/Desktop/projects/Lite3-ros-demos/src/rail_inspector/config/rail_follow_office_real_push.yaml & ros2 run rerun_logger rerun_logger --headless --onboard-fix"
+default-environment = "nav"
+depends-on = ["build-nav"]
+
+[tasks.rail-follow-teleop]
+cmd = "pixi run -e nav ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=/follow_rail_speed"
+default-environment = "nav"
+depends-on = ["build-nav"]
 
 [tasks.rerun-logger]
-cmd = "ros2 run rerun_logger rerun_logger --ros-args -p use_sim_time:=true"
+cmd = "ros2 run rerun_logger rerun_logger"
 default-environment = "nav"
-depends-on = ["build"]
+depends-on = ["build-nav"]
 
 [feature.sim]
 channels = [
@@ -147,10 +212,16 @@ ros-jazzy-sensor-msgs-py = ">=5.3.6,<6"
 ros-jazzy-rviz2 = ">=14.1.19,<15"
 ros-jazzy-grid-map-rviz-plugin = ">=2.2.2,<3"
 onnxruntime-cpp = ">=1.26.0,<2"
+numba = ">=0.65.1,<0.66"
 ros-jazzy-joy = ">=3.3.0,<4"
 ros-jazzy-teleop-twist-joy = ">=2.6.5,<3"
 ros-jazzy-laser-geometry = ">=2.7.2,<3"
 ros-jazzy-image-geometry = ">=4.1.0,<5"
+ros-jazzy-teleop-twist-keyboard = ">=2.4.1,<3"
+pcl = ">=1.15.1,<2"
+sysroot_linux-aarch64 = ">=2.17,<3"
+ros-jazzy-pcl-conversions = ">=2.6.2,<3"
+ros-jazzy-rosbag2 = ">=0.26.9,<0.27"
 
 [feature.test.pypi-dependencies]
 artefacts-toolkit = ">=1.0.0, <2"

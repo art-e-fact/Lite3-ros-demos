@@ -9,7 +9,7 @@ from rclpy.node import Node
 from std_msgs.msg import Float32
 from visualization_msgs.msg import MarkerArray
 
-from rail_inspector.rail_detector_visualization import build_markers
+from rail_inspector.rail_detector_rviz_visualization import build_markers
 
 
 class RailDetectorNode(Node):
@@ -95,15 +95,30 @@ class RailDetectorNode(Node):
                 'Maximum height mismatch allowed between the left and right rail.',
             )
         )
+        self.baseline_auto = bool(declare(
+            'baseline_auto',
+            True,
+            'Estimate the ground baseline per slice from the height scan.',
+        ))
+        self.baseline_z = float(declare(
+            'baseline_z',
+            0.0,
+            'Fixed ground baseline Z in the odom frame; used when baseline_auto is false.',
+        ))
         self.forward_span = float(declare(
             'forward_span',
             2.6,
-            'Total forward span covered by the sampled rail slices.',
+            'Forward distance ahead of the robot covered by the sampled rail slices.',
+        ))
+        self.backward_span = float(declare(
+            'backward_span',
+            0.0,
+            'Backward distance behind the robot covered by the sampled rail slices.',
         ))
         self.num_slices = max(3, int(declare(
             'num_slices',
             15,
-            'Number of cross-sections sampled across the forward span.',
+            'Number of cross-sections sampled from backward_span behind to forward_span ahead.',
         )))
         self.lateral_search_width = float(
             declare(
@@ -146,9 +161,14 @@ class RailDetectorNode(Node):
         self.create_subscription(Odometry, self.odom_topic, self.odom_callback, 10)
         self.create_subscription(GridMap, self.heightmap_topic, self.heightmap_callback, 10)
 
+        baseline_mode = (
+            'auto (per-slice median)'
+            if self.baseline_auto
+            else f'fixed at {self.baseline_z:.3f} m in odom'
+        )
         self.get_logger().info(
-            f'Parsing rails from {self.heightmap_topic} with {self.num_slices} slices '
-            f'and publishing markers on {self.marker_topic}'
+            f'Parsing rails from {self.heightmap_topic} with {self.num_slices} slices, '
+            f'baseline={baseline_mode}, publishing markers on {self.marker_topic}'
         )
 
     def odom_callback(self, msg):
@@ -163,14 +183,17 @@ class RailDetectorNode(Node):
             return
 
         detection = self._detect_rails(grid, self.latest_odom)
+
         self.marker_pub.publish(
             build_markers(
                 msg.header.frame_id,
                 msg.header.stamp,
                 detection,
+                self.backward_span,
                 max(self.forward_span, self.follow_target_lookahead),
             )
         )
+
         self._publish_detection_scalars(detection)
 
     def _publish_detection_scalars(self, detection):
@@ -232,7 +255,7 @@ class RailDetectorNode(Node):
         yaw = self._yaw_from_quaternion(odom.pose.pose.orientation)
 
         forward_offsets = np.linspace(
-            -0.5 * self.forward_span, 0.5 * self.forward_span, self.num_slices, dtype=np.float32
+            -self.backward_span, self.forward_span, self.num_slices, dtype=np.float32
         )
         sample_count = max(31, int(round(2.0 * self.lateral_search_width / grid['resolution'])) + 1)
         lateral_offsets = np.linspace(
@@ -265,6 +288,7 @@ class RailDetectorNode(Node):
             slice_result = {
                 'xy': xy,
                 'z': z,
+                'baseline': baseline,
                 'left': None,
                 'right': None,
                 'midpoint': None,
@@ -352,10 +376,13 @@ class RailDetectorNode(Node):
         slice_center = robot_xy + forward_offset * forward
         xy = slice_center + lateral_offsets[:, None] * lateral[None, :]
         z = self._sample_grid(grid, xy)
-        center_mask = np.abs(lateral_offsets) <= min(0.25, 0.25 * self.track_gauge)
-        baseline = self._safe_nanmedian(z[center_mask])
-        if not math.isfinite(baseline):
-            baseline = self._safe_nanmedian(z)
+        if not self.baseline_auto:
+            baseline = self.baseline_z
+        else:
+            center_mask = np.abs(lateral_offsets) <= min(0.25, 0.25 * self.track_gauge)
+            baseline = self._safe_nanmedian(z[center_mask])
+            if not math.isfinite(baseline):
+                baseline = self._safe_nanmedian(z)
         return xy, z, baseline
 
     def _sample_grid(self, grid, xy):

@@ -1,5 +1,4 @@
 import math
-import time
 
 import rclpy
 from geometry_msgs.msg import Twist
@@ -56,6 +55,16 @@ class RailTargetFollowerNode(Node):
             'target_distance_topic',
             '/rail_detector/target_distance',
             'Input topic with the target distance in meters; negative means invalid.',
+        )
+        self.follow_mode = declare(
+            'follow_mode',
+            'auto',
+            'Control mode: "auto" (follows target automatically) or "teleop" (uses follow_rail_speed).',
+        )
+        self.follow_rail_speed_topic = declare(
+            'follow_rail_speed_topic',
+            '/follow_rail_speed',
+            'Input Twist topic for teleop forward speed command along the rail.',
         )
         self.control_rate_hz = float(declare(
             'control_rate_hz',
@@ -117,25 +126,28 @@ class RailTargetFollowerNode(Node):
         self.latest_tangent_yaw = float('nan')
         self.latest_target_distance = -1.0
         self.latest_odom_yaw = float('nan')
+        self.latest_teleop_speed = 0.0
 
         self.center_offset_walltime = float('-inf')
         self.tangent_yaw_walltime = float('-inf')
         self.target_distance_walltime = float('-inf')
         self.odom_walltime = float('-inf')
+        self.teleop_speed_walltime = float('-inf')
 
         self.cmd_pub = self.create_publisher(Twist, self.cmd_vel_topic, 20)
         self.create_subscription(Float32, self.center_offset_topic, self.center_offset_callback, 10)
         self.create_subscription(Float32, self.tangent_yaw_topic, self.tangent_yaw_callback, 10)
         self.create_subscription(Float32, self.target_distance_topic, self.target_distance_callback, 10)
         self.create_subscription(Odometry, self.odom_topic, self.odom_callback, 20)
+        self.create_subscription(Twist, self.follow_rail_speed_topic, self.teleop_speed_callback, 10)
         self.control_timer = self.create_timer(
             1.0 / max(1e-6, self.control_rate_hz),
             self.control_callback,
         )
 
         self.get_logger().info(
-            f'Following rails from {self.center_offset_topic}, {self.tangent_yaw_topic}, '
-            f'and {self.target_distance_topic}; publishing Twist on {self.cmd_vel_topic}'
+            f'Following rails in {self.follow_mode} mode from {self.center_offset_topic}, {self.tangent_yaw_topic}; '
+            f'publishing Twist on {self.cmd_vel_topic}'
         )
 
     def center_offset_callback(self, msg):
@@ -154,6 +166,10 @@ class RailTargetFollowerNode(Node):
         self.latest_odom_yaw = self._yaw_from_quaternion(msg.pose.pose.orientation)
         self.odom_walltime = self.get_clock().now().nanoseconds / 1e9
 
+    def teleop_speed_callback(self, msg):
+        self.latest_teleop_speed = float(msg.linear.x)
+        self.teleop_speed_walltime = self.get_clock().now().nanoseconds / 1e9
+
     def control_callback(self):
         now = self.get_clock().now().nanoseconds / 1e9
         if self._is_stale(now):
@@ -166,13 +182,22 @@ class RailTargetFollowerNode(Node):
             self.get_logger().warn('Rail line is invalid; stopping.', throttle_duration_sec=2.0)
             return
 
-        if not math.isfinite(self.latest_target_distance) or self.latest_target_distance < 0.0:
-            self.publish_stop()
-            self.get_logger().warn('Follow target is unavailable; stopping.', throttle_duration_sec=2.0)
-            return
+        if self.follow_mode == 'teleop':
+            along_speed = _clamp(self.latest_teleop_speed, -self.max_linear_x, self.max_linear_x)
+        else:
+            if not math.isfinite(self.latest_target_distance) or self.latest_target_distance < 0.0:
+                self.publish_stop()
+                self.get_logger().warn('Follow target is unavailable; stopping.', throttle_duration_sec=2.0)
+                return
 
-        distance_error = self.latest_target_distance - self.follow_distance
-        if distance_error <= 0.0:
+            distance_error = self.latest_target_distance - self.follow_distance
+            if distance_error <= 0.0:
+                self.publish_stop()
+                return
+
+            along_speed = self._compute_along_speed(distance_error)
+
+        if along_speed == 0.0:
             self.publish_stop()
             return
 
@@ -181,11 +206,6 @@ class RailTargetFollowerNode(Node):
             math.sin(self.latest_tangent_yaw),
         )
         normal = (-tangent[1], tangent[0])
-
-        along_speed = self._compute_along_speed(distance_error)
-        if along_speed <= 0.0:
-            self.publish_stop()
-            return
 
         lateral_speed = _clamp(
             -self.k_center * self.latest_center_offset,
@@ -222,12 +242,16 @@ class RailTargetFollowerNode(Node):
         return min_linear_x + ramp * (self.max_linear_x - min_linear_x)
 
     def _is_stale(self, now):
-        return (
+        base_stale = (
             now - self.center_offset_walltime > self.stale_timeout_sec
             or now - self.tangent_yaw_walltime > self.stale_timeout_sec
-            or now - self.target_distance_walltime > self.stale_timeout_sec
             or now - self.odom_walltime > self.stale_timeout_sec
         )
+        if base_stale:
+            return True
+        if self.follow_mode == 'teleop':
+            return now - self.teleop_speed_walltime > self.stale_timeout_sec
+        return now - self.target_distance_walltime > self.stale_timeout_sec
 
     @staticmethod
     def _world_to_body(world_vx, world_vy, yaw):

@@ -1,4 +1,6 @@
 import math
+import time
+from array import array
 
 import numpy as np
 import rclpy
@@ -7,11 +9,12 @@ from grid_map_msgs.msg import GridMap
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2
-from std_msgs.msg import Float32MultiArray, Header, MultiArrayDimension
+from std_msgs.msg import Float32, Float32MultiArray, MultiArrayDimension
 from tf2_ros import Buffer, TransformException, TransformListener
 from visualization_msgs.msg import MarkerArray
 
 from simple_local_heightmap.heightmap_visualization import build_base_markers
+from simple_local_heightmap.visibility_cleanup import apply_visibility_cleanup
 
 
 class LocalHeightmapNode(Node):
@@ -21,10 +24,8 @@ class LocalHeightmapNode(Node):
         self.cloud_topic = self.declare_parameter('cloud_topic', '/mid360/points').value
         self.odom_topic = self.declare_parameter('odom_topic', '/odom').value
         self.output_topic = self.declare_parameter('heightmap_topic', '/local_heightmap').value
-        self.debug_topic = self.declare_parameter(
-            'debug_cloud_topic', '/local_heightmap/debug_points'
-        ).value
         self.front_clear_marker_topic = '/local_heightmap/front_clear_markers'
+        self.height_scan_perf_topic = '/perf/height_scan'
         self.map_frame = self.declare_parameter('map_frame', 'odom').value
         self.robot_frame = self.declare_parameter('robot_frame', 'base_link').value
         self.resolution = float(self.declare_parameter('resolution', 0.05).value)
@@ -53,6 +54,15 @@ class LocalHeightmapNode(Node):
         self.max_pose_variance = float(
             self.declare_parameter('max_pose_variance', 0.0).value
         )
+        self.visibility_cleanup_enabled = bool(
+            self.declare_parameter('visibility_cleanup_enabled', False).value
+        )
+        self.visibility_cleanup_tolerance = float(
+            self.declare_parameter('visibility_cleanup_tolerance', 0.05).value
+        )
+
+        self._min_range_sq = self.min_range ** 2
+        self._max_range_sq = self.max_range ** 2
 
         self.width = max(1, int(round(self.length_x / self.resolution)))
         self.height = max(1, int(round(self.length_y / self.resolution)))
@@ -61,6 +71,9 @@ class LocalHeightmapNode(Node):
         self.latest_pose_variance = 0.0
         self.center_x = None
         self.center_y = None
+        self._front_clear_grid_center = (None, None)
+        self._front_clear_xs = None
+        self._front_clear_ys = None
         self.elevation = np.full((self.height, self.width), np.nan, dtype=np.float32)
         self.valid = np.zeros((self.height, self.width), dtype=bool)
         self.last_seen = np.full((self.height, self.width), -np.inf, dtype=np.float64)
@@ -68,9 +81,11 @@ class LocalHeightmapNode(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.map_pub = self.create_publisher(GridMap, self.output_topic, 10)
-        self.debug_pub = self.create_publisher(PointCloud2, self.debug_topic, 10)
         self.front_clear_marker_pub = self.create_publisher(
             MarkerArray, self.front_clear_marker_topic, 10
+        )
+        self.height_scan_perf_pub = self.create_publisher(
+            Float32, self.height_scan_perf_topic, 10
         )
         self.create_subscription(PointCloud2, self.cloud_topic, self.cloud_callback, 10)
         self.create_subscription(Odometry, self.odom_topic, self.odom_callback, 10)
@@ -87,6 +102,11 @@ class LocalHeightmapNode(Node):
                 f'timeout {self.front_stale_time_sec:.2f} s on '
                 f'{self.front_clear_marker_topic}'
             )
+        if self.visibility_cleanup_enabled:
+            self.get_logger().info(
+                'Visibility cleanup enabled with '
+                f'tolerance {self.visibility_cleanup_tolerance:.3f} m'
+            )
 
     def odom_callback(self, msg):
         cov = msg.pose.covariance
@@ -96,6 +116,8 @@ class LocalHeightmapNode(Node):
         if self.max_pose_variance > 0.0:
             if self.latest_pose_variance > self.max_pose_variance:
                 return
+
+        t0 = time.perf_counter()
 
         stamp = msg.header.stamp
         scan_time = self._stamp_to_sec(stamp)
@@ -124,11 +146,22 @@ class LocalHeightmapNode(Node):
                 points = self._transform_points(points, cloud_transform)
                 points = self._filter_points_by_height(points)
             if len(points) != 0:
-                self._fuse_scan(self._rasterize(points), scan_time)
+                scan_heightmap = self._rasterize(points)
+                if self.visibility_cleanup_enabled:
+                    sensor = cloud_transform.transform.translation
+                    apply_visibility_cleanup(
+                        self.elevation,
+                        self.valid,
+                        scan_heightmap,
+                        (sensor.x, sensor.y, sensor.z),
+                        self._grid_min_corner(),
+                        self.resolution,
+                        self.visibility_cleanup_tolerance,
+                    )
+                self._fuse_scan(scan_heightmap, scan_time)
 
         self._expire_stale_cells(scan_time, robot_transform)
         self.map_pub.publish(self._to_grid_map(stamp))
-        self.debug_pub.publish(self._to_debug_cloud(stamp))
         self.front_clear_marker_pub.publish(
             build_base_markers(
                 self.map_frame,
@@ -137,6 +170,9 @@ class LocalHeightmapNode(Node):
             )
         )
 
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+        self.height_scan_perf_pub.publish(Float32(data=elapsed_ms))
+
     def _cloud_to_array(self, msg):
         points = pc2.read_points(msg, field_names=('x', 'y', 'z'), skip_nans=True)
         if isinstance(points, np.ndarray) and points.dtype.names:
@@ -144,11 +180,8 @@ class LocalHeightmapNode(Node):
         return np.asarray(list(points), dtype=np.float32).reshape(-1, 3)
 
     def _filter_points_by_range(self, points):
-        ranges = np.linalg.norm(points, axis=1)
-        valid = (
-            (ranges >= self.min_range)
-            & (ranges <= self.max_range)
-        )
+        r2 = np.einsum('ij,ij->i', points, points)
+        valid = (r2 >= self._min_range_sq) & (r2 <= self._max_range_sq)
         return points[valid]
 
     def _filter_points_by_height(self, points):
@@ -168,11 +201,17 @@ class LocalHeightmapNode(Node):
         if len(zs) == 0:
             return heightmap
 
-        # Median per cell keeps one robust surface estimate from each scan.
+        # Vectorized group-median: sort by (cell, z) then index the middle element(s).
         linear = rows * self.width + cols
-        unique_cells, inverse = np.unique(linear, return_inverse=True)
-        for index, cell in enumerate(unique_cells):
-            heightmap.flat[cell] = np.median(zs[inverse == index])
+        order = np.lexsort((zs, linear))
+        linear_s = linear[order]
+        zs_s = zs[order]
+        cells, starts, counts = np.unique(linear_s, return_index=True, return_counts=True)
+        mid = starts + counts // 2
+        medians = zs_s[mid].astype(np.float32)
+        even = (counts % 2) == 0
+        medians[even] = 0.5 * (zs_s[mid[even]] + zs_s[mid[even] - 1])
+        heightmap.flat[cells] = medians
         return heightmap
 
     def _fuse_scan(self, scan_heightmap, scan_time):
@@ -211,9 +250,12 @@ class LocalHeightmapNode(Node):
             return None
 
         x_min, y_min = self._grid_min_corner()
-        cols = x_min + (np.arange(self.width, dtype=np.float32) + 0.5) * self.resolution
-        rows = y_min + (np.arange(self.height, dtype=np.float32) + 0.5) * self.resolution
-        xs, ys = np.meshgrid(cols, rows)
+        if self._front_clear_grid_center != (self.center_x, self.center_y):
+            cols = x_min + (np.arange(self.width, dtype=np.float32) + 0.5) * self.resolution
+            rows = y_min + (np.arange(self.height, dtype=np.float32) + 0.5) * self.resolution
+            self._front_clear_xs, self._front_clear_ys = np.meshgrid(cols, rows)
+            self._front_clear_grid_center = (self.center_x, self.center_y)
+        xs, ys = self._front_clear_xs, self._front_clear_ys
 
         translation = robot_transform.transform.translation
         rotation = robot_transform.transform.rotation
@@ -312,17 +354,8 @@ class LocalHeightmapNode(Node):
             ),
             MultiArrayDimension(label='row_index', size=self.height, stride=self.height),
         ]
-        data.data = np.flip(self.elevation, axis=(0, 1)).reshape(-1).astype(np.float32).tolist()
+        data.data = array('f', np.flip(self.elevation, axis=(0, 1)).ravel())
         return data
-
-    def _to_debug_cloud(self, stamp):
-        rows, cols = np.nonzero(self.valid)
-        x_min, y_min = self._grid_min_corner()
-        x = x_min + (cols + 0.5) * self.resolution
-        y = y_min + (rows + 0.5) * self.resolution
-        points = np.column_stack((x, y, self.elevation[rows, cols])).astype(np.float32)
-        header = Header(stamp=stamp, frame_id=self.map_frame)
-        return pc2.create_cloud_xyz32(header, points.tolist())
 
     @staticmethod
     def _stamp_to_sec(stamp):
@@ -336,7 +369,7 @@ class LocalHeightmapNode(Node):
             rotation.x, rotation.y, rotation.z, rotation.w
         )
         offset = np.array([translation.x, translation.y, translation.z], dtype=np.float32)
-        return (rot @ points.T).T + offset
+        return points @ rot.T + offset
 
     @staticmethod
     def _quaternion_matrix(x, y, z, w):
