@@ -9,6 +9,25 @@ import rerun as rr
 from rclpy.time import Time
 from visualization_msgs.msg import Marker, MarkerArray
 
+from rerun_logger.clear_entity import clear_entity
+
+_GEOMETRY_PATHS = (
+    'detector/slice_profiles',
+    'detector/slice_baselines',
+    'detector/rail_hits',
+    'detector/center_samples',
+    'detector/follow_target_candidates',
+    'detector/follow_target',
+    'detector/centerline',
+    'detector/summary',
+)
+_METRIC_PATHS = (
+    'detector/metrics/center_offset',
+    'detector/metrics/heading_deg',
+    'detector/metrics/target_distance',
+    'detector/metrics/target_height',
+)
+
 
 def log_rail_detector_markers(msg: MarkerArray, detector_frame: str | None) -> str | None:
     """
@@ -26,13 +45,15 @@ def log_rail_detector_markers(msg: MarkerArray, detector_frame: str | None) -> s
     Returns:
         The (possibly updated) ``detector_frame`` value.
     """
-    # Group markers by namespace; skip the leading DELETEALL sentinel.
     ns_markers: dict[str, list[Marker]] = {}
     frame_id: str | None = None
     stamp = None
 
     for marker in msg.markers:
         if marker.action == Marker.DELETEALL:
+            if stamp is None:
+                frame_id = marker.header.frame_id
+                stamp = marker.header.stamp
             continue
         ns_markers.setdefault(marker.ns, []).append(marker)
         if stamp is None:
@@ -40,32 +61,25 @@ def log_rail_detector_markers(msg: MarkerArray, detector_frame: str | None) -> s
             stamp = marker.header.stamp
 
     if stamp is None:
-        # Message contained only a DELETEALL — clear all detector paths.
-        for path in [
-            'detector/slice_profiles', 'detector/slice_baselines', 'detector/rail_hits',
-            'detector/center_samples', 'detector/follow_target_candidates',
-            'detector/follow_target', 'detector/centerline',
-            'detector/summary',
-        ]:
-            rr.log(path, [])
         return detector_frame
 
     time = Time.from_msg(stamp)
     rr.set_time("ros_time", timestamp=np.datetime64(time.nanoseconds, "ns"))
 
+    if not ns_markers:
+        for path in _GEOMETRY_PATHS:
+            clear_entity(path)
+        for path in _METRIC_PATHS:
+            clear_entity(path)
+        return detector_frame
+
     # Pin every leaf entity to the correct named frame once, statically, so
     # Rerun can resolve the transform path even after dynamic clear calls.
     if frame_id and frame_id != detector_frame:
         detector_frame = frame_id
-        for path in [
-            'detector/slice_profiles', 'detector/slice_baselines', 'detector/rail_hits',
-            'detector/center_samples', 'detector/follow_target_candidates',
-            'detector/follow_target', 'detector/centerline',
-            'detector/summary',
-        ]:
+        for path in _GEOMETRY_PATHS:
             rr.log(path, rr.CoordinateFrame(frame=frame_id), static=True)
 
-    # Slice profiles (one LINE_STRIP marker per slice)
     strips = [
         [[p.x, p.y, p.z] for p in m.points]
         for m in ns_markers.get('slice_profiles', [])
@@ -74,7 +88,7 @@ def log_rail_detector_markers(msg: MarkerArray, detector_frame: str | None) -> s
     if strips:
         rr.log('detector/slice_profiles', rr.LineStrips3D(strips, radii=0.0075, colors=[[51, 178, 255, 191]]))
     else:
-        rr.log('detector/slice_profiles', [])
+        clear_entity('detector/slice_profiles')
 
     baseline_strips = [
         [[p.x, p.y, p.z] for p in m.points]
@@ -87,33 +101,29 @@ def log_rail_detector_markers(msg: MarkerArray, detector_frame: str | None) -> s
             rr.LineStrips3D(baseline_strips, radii=0.0075, colors=[[255, 255, 166, 191]]),
         )
     else:
-        rr.log('detector/slice_baselines', [])
+        clear_entity('detector/slice_baselines')
 
-    # Rail hits (single SPHERE_LIST marker)
     hits_markers = ns_markers.get('rail_hits', [])
     if hits_markers:
         pts = np.array([[p.x, p.y, p.z] for p in hits_markers[0].points])
         rr.log('detector/rail_hits', rr.Points3D(positions=pts, radii=0.04, colors=[[128, 51, 242]]))
     else:
-        rr.log('detector/rail_hits', [])
+        clear_entity('detector/rail_hits')
 
-    # Center samples / midpoints (single SPHERE_LIST marker)
     cs_markers = ns_markers.get('center_samples', [])
     if cs_markers:
         pts = np.array([[p.x, p.y, p.z] for p in cs_markers[0].points])
         rr.log('detector/center_samples', rr.Points3D(positions=pts, radii=0.05, colors=[[255, 230, 25]]))
     else:
-        rr.log('detector/center_samples', [])
+        clear_entity('detector/center_samples')
 
-    # Follow-target candidates (single SPHERE_LIST marker)
     ftc_markers = ns_markers.get('follow_target_candidates', [])
     if ftc_markers:
         pts = np.array([[p.x, p.y, p.z] for p in ftc_markers[0].points])
         rr.log('detector/follow_target_candidates', rr.Points3D(positions=pts, radii=0.04, colors=[[255, 140, 25]]))
     else:
-        rr.log('detector/follow_target_candidates', [])
+        clear_entity('detector/follow_target_candidates')
 
-    # Follow target (single CYLINDER marker)
     ft_markers = ns_markers.get('follow_target', [])
     if ft_markers:
         m = ft_markers[0]
@@ -130,17 +140,15 @@ def log_rail_detector_markers(msg: MarkerArray, detector_frame: str | None) -> s
             ),
         )
     else:
-        rr.log('detector/follow_target', [])
+        clear_entity('detector/follow_target')
 
-    # Centerline (single LINE_STRIP marker)
     cl_markers = ns_markers.get('centerline', [])
     if cl_markers:
         pts = [[p.x, p.y, p.z] for p in cl_markers[0].points]
         rr.log('detector/centerline', rr.LineStrips3D([pts], radii=0.025, colors=[[25, 255, 51]]))
     else:
-        rr.log('detector/centerline', [])
+        clear_entity('detector/centerline')
 
-    # Summary text + scalar metrics (TEXT_VIEW_FACING marker)
     summary_markers = ns_markers.get('summary', [])
     if summary_markers:
         text = summary_markers[0].text
@@ -151,12 +159,16 @@ def log_rail_detector_markers(msg: MarkerArray, detector_frame: str | None) -> s
             offset = float(m.group(1))
             summary_md += f'* **Center Offset**: `{offset:+.2f} m`\n'
             rr.log('detector/metrics/center_offset', rr.Scalars(offset))
+        else:
+            clear_entity('detector/metrics/center_offset')
 
         m = re.search(r'heading=([+-]?\d+\.\d+)', text)
         if m:
             heading = float(m.group(1))
             summary_md += f'* **Heading (Yaw)**: `{heading:.1f}°`\n'
             rr.log('detector/metrics/heading_deg', rr.Scalars(heading))
+        else:
+            clear_entity('detector/metrics/heading_deg')
 
         if 'rail parse incomplete' in text:
             summary_md += '* **Status**: `rail parse incomplete`\n'
@@ -171,9 +183,14 @@ def log_rail_detector_markers(msg: MarkerArray, detector_frame: str | None) -> s
             rr.log('detector/metrics/target_height', rr.Scalars(height))
         elif 'follow_target=none' in text:
             summary_md += '* **Follow Target**: `none`\n'
+            clear_entity('detector/metrics/target_distance')
+            clear_entity('detector/metrics/target_height')
+        else:
+            clear_entity('detector/metrics/target_distance')
+            clear_entity('detector/metrics/target_height')
 
         rr.log('detector/summary', rr.TextDocument(summary_md, media_type=rr.MediaType.MARKDOWN))
     else:
-        rr.log('detector/summary', [])
+        clear_entity('detector/summary')
 
     return detector_frame

@@ -16,142 +16,176 @@ class RailDetectorNode(Node):
     def __init__(self):
         super().__init__('rail_detector_node')
 
-        def declare(name, default, description):
+        def declare(name, default, description, read_only=False):
             return self.declare_parameter(
                 name,
                 default,
-                ParameterDescriptor(description=description),
+                ParameterDescriptor(description=description, read_only=read_only),
             ).value
+
+        def declare_dynamic(name, default, description, cast=None):
+            self.declare_parameter(
+                name,
+                default,
+                ParameterDescriptor(description=description),
+            )
+
+            def getter():
+                value = self.get_parameter(name).value
+                return cast(value) if cast is not None else value
+
+            return getter
 
         self.heightmap_topic = declare(
             'heightmap_topic',
             '/local_heightmap',
             'Input GridMap topic with the local elevation layer.',
+            read_only=True,
         )
         self.odom_topic = declare(
             'odom_topic',
             '/odom',
             'Odometry topic used for robot position and heading.',
+            read_only=True,
         )
         self.marker_topic = declare(
             'marker_topic',
             '/rail_detector/markers',
             'Output MarkerArray topic for RViz debug markers.',
+            read_only=True,
         )
         self.center_offset_topic = declare(
             'center_offset_topic',
             '/rail_detector/center_offset',
             'Output topic for the signed rail center offset in meters.',
+            read_only=True,
         )
         self.tangent_yaw_topic = declare(
             'tangent_yaw_topic',
             '/rail_detector/tangent_yaw',
             'Output topic for the detected rail tangent yaw in radians.',
+            read_only=True,
         )
         self.target_distance_topic = declare(
             'target_distance_topic',
             '/rail_detector/target_distance',
             'Output topic for the detected target distance in meters; negative means invalid.',
+            read_only=True,
         )
-        self.track_gauge = float(declare(
+        self.track_gauge = declare_dynamic(
             'track_gauge',
             1.067,
             'Expected distance between the two rails in meters.',
-        ))
-        self.rail_width = float(declare(
+            cast=float,
+        )
+        self.rail_width = declare_dynamic(
             'rail_width',
             0.15,
             'Expected lateral width of one rail in meters.',
-        ))
-        self.gauge_tolerance = float(declare(
+            cast=float,
+        )
+        self.gauge_tolerance = declare_dynamic(
             'gauge_tolerance',
             0.40,
             'Maximum rail-pair gauge error allowed in one slice.',
-        ))
-        self.angle_sweep_deg = float(declare(
+            cast=float,
+        )
+        self.angle_sweep_deg = declare_dynamic(
             'angle_sweep_deg',
             40.0,
             'Half-range of the center-slice heading search in degrees.',
-        ))
-        self.angle_step_deg = float(declare(
+            cast=float,
+        )
+        self.angle_step_deg = declare_dynamic(
             'angle_step_deg',
             5.0,
             'Heading increment used during the center-slice search.',
-        ))
-        self.min_rail_height = float(declare(
+            cast=float,
+        )
+        self.min_rail_height = declare_dynamic(
             'min_rail_height',
             0.05,
             'Minimum height above the local baseline to accept a rail hit.',
-        ))
-        self.max_rail_height = float(declare(
+            cast=float,
+        )
+        self.max_rail_height = declare_dynamic(
             'max_rail_height',
             0.30,
             'Maximum height above the local baseline to accept a rail hit.',
-        ))
-        self.max_rail_height_difference = float(
-            declare(
-                'max_rail_height_difference',
-                0.08,
-                'Maximum height mismatch allowed between the left and right rail.',
-            )
+            cast=float,
         )
-        self.baseline_auto = bool(declare(
+        self.max_rail_height_difference = declare_dynamic(
+            'max_rail_height_difference',
+            0.08,
+            'Maximum height mismatch allowed between the left and right rail.',
+            cast=float,
+        )
+        self.baseline_auto = declare_dynamic(
             'baseline_auto',
             True,
             'Estimate the ground baseline per slice from the height scan.',
-        ))
-        self.baseline_z = float(declare(
+            cast=bool,
+        )
+        self.baseline_z = declare_dynamic(
             'baseline_z',
             0.0,
             'Fixed ground baseline Z in the odom frame; used when baseline_auto is false.',
-        ))
-        self.forward_span = float(declare(
+            cast=float,
+        )
+        self.forward_span = declare_dynamic(
             'forward_span',
             2.6,
             'Forward distance ahead of the robot covered by the sampled rail slices.',
-        ))
-        self.backward_span = float(declare(
+            cast=float,
+        )
+        self.backward_span = declare_dynamic(
             'backward_span',
             0.0,
             'Backward distance behind the robot covered by the sampled rail slices.',
-        ))
-        self.num_slices = max(3, int(declare(
+            cast=float,
+        )
+        self.num_slices = declare_dynamic(
             'num_slices',
             15,
             'Number of cross-sections sampled from backward_span behind to forward_span ahead.',
-        )))
-        self.lateral_search_width = float(
-            declare(
-                'lateral_search_width',
-                1.8,
-                'Half-width of each sampled cross-section in meters.',
-            )
+            cast=int,
         )
-        self.follow_target_lookahead = float(declare(
+        self.lateral_search_width = declare_dynamic(
+            'lateral_search_width',
+            1.8,
+            'Half-width of each sampled cross-section in meters.',
+            cast=float,
+        )
+        self.follow_target_lookahead = declare_dynamic(
             'follow_target_lookahead',
             8.0,
             'How far ahead along the detected rail center to search for a follow target.',
-        ))
-        self.follow_target_kernel_size = float(declare(
+            cast=float,
+        )
+        self.follow_target_kernel_size = declare_dynamic(
             'follow_target_kernel_size',
             0.35,
             'Width of the center sample window used to measure the follow target.',
-        ))
-        self.follow_target_sample_step = float(declare(
+            cast=float,
+        )
+        self.follow_target_sample_step = declare_dynamic(
             'follow_target_sample_step',
             0.10,
             'Distance between follow-target samples along the rail center.',
-        ))
-        self.follow_target_min_height = float(declare(
+            cast=float,
+        )
+        self.follow_target_min_height = declare_dynamic(
             'follow_target_min_height',
             0.1,
             'Minimum rise above the detected rail height to count as a follow target.',
-        ))
-        self.follow_target_max_height = float(declare(
+            cast=float,
+        )
+        self.follow_target_max_height = declare_dynamic(
             'follow_target_max_height',
             2.2,
             'Maximum rise above the detected rail height to keep the follow target plausible.',
-        ))
+            cast=float,
+        )
         self.latest_odom = None
 
         self.marker_pub = self.create_publisher(MarkerArray, self.marker_topic, 10)
@@ -163,11 +197,11 @@ class RailDetectorNode(Node):
 
         baseline_mode = (
             'auto (per-slice median)'
-            if self.baseline_auto
-            else f'fixed at {self.baseline_z:.3f} m in odom'
+            if self.baseline_auto()
+            else f'fixed at {self.baseline_z():.3f} m in odom'
         )
         self.get_logger().info(
-            f'Parsing rails from {self.heightmap_topic} with {self.num_slices} slices, '
+            f'Parsing rails from {self.heightmap_topic} with {self.num_slices()} slices, '
             f'baseline={baseline_mode}, publishing markers on {self.marker_topic}'
         )
 
@@ -189,8 +223,8 @@ class RailDetectorNode(Node):
                 msg.header.frame_id,
                 msg.header.stamp,
                 detection,
-                self.backward_span,
-                max(self.forward_span, self.follow_target_lookahead),
+                self.backward_span(),
+                max(self.forward_span(), self.follow_target_lookahead()),
             )
         )
 
@@ -255,11 +289,11 @@ class RailDetectorNode(Node):
         yaw = self._yaw_from_quaternion(odom.pose.pose.orientation)
 
         forward_offsets = np.linspace(
-            -self.backward_span, self.forward_span, self.num_slices, dtype=np.float32
+            -self.backward_span(), self.forward_span(), max(3, self.num_slices()), dtype=np.float32
         )
-        sample_count = max(31, int(round(2.0 * self.lateral_search_width / grid['resolution'])) + 1)
+        sample_count = max(31, int(round(2.0 * self.lateral_search_width() / grid['resolution'])) + 1)
         lateral_offsets = np.linspace(
-            -self.lateral_search_width, self.lateral_search_width, sample_count, dtype=np.float32
+            -self.lateral_search_width(), self.lateral_search_width(), sample_count, dtype=np.float32
         )
         forward, lateral = self._find_best_slice_axes(robot_xy, yaw, lateral_offsets, grid)
 
@@ -331,11 +365,11 @@ class RailDetectorNode(Node):
     def _find_best_slice_axes(self, robot_xy, yaw, lateral_offsets, grid):
         """Sweep the center slice angle and keep the valid orientation with the smallest gauge error."""
         best = None
-        if self.angle_step_deg > 0.0 and self.angle_sweep_deg > 0.0:
+        if self.angle_step_deg() > 0.0 and self.angle_sweep_deg() > 0.0:
             angle_offsets_deg = np.arange(
-                -self.angle_sweep_deg,
-                self.angle_sweep_deg + 0.5 * self.angle_step_deg,
-                self.angle_step_deg,
+                -self.angle_sweep_deg(),
+                self.angle_sweep_deg() + 0.5 * self.angle_step_deg(),
+                self.angle_step_deg(),
                 dtype=np.float32,
             )
         else:
@@ -362,7 +396,7 @@ class RailDetectorNode(Node):
                 continue
 
             left_point, right_point = pair
-            gauge_error = abs(float(np.linalg.norm(left_point[:2] - right_point[:2])) - self.track_gauge)
+            gauge_error = abs(float(np.linalg.norm(left_point[:2] - right_point[:2])) - self.track_gauge())
             candidate = (gauge_error, abs(float(angle_offset_deg)), forward, lateral)
             if best is None or candidate[:2] < best[:2]:
                 best = candidate
@@ -376,10 +410,10 @@ class RailDetectorNode(Node):
         slice_center = robot_xy + forward_offset * forward
         xy = slice_center + lateral_offsets[:, None] * lateral[None, :]
         z = self._sample_grid(grid, xy)
-        if not self.baseline_auto:
-            baseline = self.baseline_z
+        if not self.baseline_auto():
+            baseline = self.baseline_z()
         else:
-            center_mask = np.abs(lateral_offsets) <= min(0.25, 0.25 * self.track_gauge)
+            center_mask = np.abs(lateral_offsets) <= min(0.25, 0.25 * self.track_gauge())
             baseline = self._safe_nanmedian(z[center_mask])
             if not math.isfinite(baseline):
                 baseline = self._safe_nanmedian(z)
@@ -413,8 +447,8 @@ class RailDetectorNode(Node):
         smooth = self._smooth_profile(z)
         in_height_band = (
             np.isfinite(smooth)
-            & (smooth >= baseline + self.min_rail_height)
-            & (smooth <= baseline + self.max_rail_height)
+            & (smooth >= baseline + self.min_rail_height())
+            & (smooth <= baseline + self.max_rail_height())
         )
         groups = self._extract_slice_groups(
             xy,
@@ -427,14 +461,14 @@ class RailDetectorNode(Node):
         if not groups:
             return None
 
-        width_tolerance = max(2.0 * resolution, 0.5 * self.rail_width)
+        width_tolerance = max(2.0 * resolution, 0.5 * self.rail_width())
         left_groups = [
             group for group in groups
-            if group['offset'] > 0.0 and abs(group['width'] - self.rail_width) <= width_tolerance
+            if group['offset'] > 0.0 and abs(group['width'] - self.rail_width()) <= width_tolerance
         ]
         right_groups = [
             group for group in groups
-            if group['offset'] < 0.0 and abs(group['width'] - self.rail_width) <= width_tolerance
+            if group['offset'] < 0.0 and abs(group['width'] - self.rail_width()) <= width_tolerance
         ]
         if not left_groups or not right_groups:
             return None
@@ -444,15 +478,15 @@ class RailDetectorNode(Node):
         for left_group in left_groups:
             for right_group in right_groups:
                 measured_gauge = float(left_group['offset'] - right_group['offset'])
-                gauge_error = abs(measured_gauge - self.track_gauge)
+                gauge_error = abs(measured_gauge - self.track_gauge())
                 height_error = abs(left_group['point'][2] - right_group['point'][2])
                 width_error = (
-                    abs(left_group['width'] - self.rail_width)
-                    + abs(right_group['width'] - self.rail_width)
+                    abs(left_group['width'] - self.rail_width())
+                    + abs(right_group['width'] - self.rail_width())
                 )
                 if (
-                    gauge_error > self.gauge_tolerance
-                    or height_error > self.max_rail_height_difference
+                    gauge_error > self.gauge_tolerance()
+                    or height_error > self.max_rail_height_difference()
                 ):
                     continue
 
@@ -470,15 +504,15 @@ class RailDetectorNode(Node):
         if line is None or not math.isfinite(rail_baseline):
             return [], None
 
-        step = max(float(grid['resolution']), self.follow_target_sample_step)
-        if self.follow_target_lookahead <= 0.0 or self.follow_target_kernel_size <= 0.0:
+        step = max(float(grid['resolution']), self.follow_target_sample_step())
+        if self.follow_target_lookahead() <= 0.0 or self.follow_target_kernel_size() <= 0.0:
             return [], None
 
         tangent = line['tangent']
         normal = np.array([-tangent[1], tangent[0]], dtype=np.float32)
         start = robot_xy - line['signed_offset'] * normal
-        kernel_half_width = 0.5 * self.follow_target_kernel_size
-        sample_count = max(3, int(round(self.follow_target_kernel_size / grid['resolution'])) + 1)
+        kernel_half_width = 0.5 * self.follow_target_kernel_size()
+        sample_count = max(3, int(round(self.follow_target_kernel_size() / grid['resolution'])) + 1)
         lateral_offsets = np.linspace(
             -kernel_half_width,
             kernel_half_width,
@@ -487,7 +521,7 @@ class RailDetectorNode(Node):
         )
 
         candidates = []
-        distances = np.arange(0.0, self.follow_target_lookahead + 0.5 * step, step, dtype=np.float32)
+        distances = np.arange(0.0, self.follow_target_lookahead() + 0.5 * step, step, dtype=np.float32)
         for distance in distances:
             center = start + float(distance) * tangent
             xy = center + lateral_offsets[:, None] * normal[None, :]
@@ -497,7 +531,7 @@ class RailDetectorNode(Node):
                 continue
 
             height = float(peak - rail_baseline)
-            if height < self.follow_target_min_height or height > self.follow_target_max_height:
+            if height < self.follow_target_min_height() or height > self.follow_target_max_height():
                 continue
 
             target = {
@@ -513,7 +547,7 @@ class RailDetectorNode(Node):
     def _extract_slice_groups(self, xy, lateral_offsets, z, smooth, mask, resolution):
         """Split one slice into contiguous height-consistent groups."""
         groups = []
-        group_height_step = max(resolution, 0.5 * self.min_rail_height)
+        group_height_step = max(resolution, 0.5 * self.min_rail_height())
         start = None
         prev = None
 

@@ -35,7 +35,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'rail_inspect_controller = rail_inspector.rail_inspect_controller:main',
+            'rail_follow_tui = rail_inspector.rail_follow_tui_node:main',
             'rail_detector_node = rail_inspector.rail_detector_node:main',
             'rail_target_follower_node = rail_inspector.rail_target_follower_node:main',
             'relay_node = rail_inspector.relay_node:main',

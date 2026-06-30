@@ -8,6 +8,8 @@ from grid_map_msgs.msg import GridMap
 from rclpy.time import Time
 from visualization_msgs.msg import Marker, MarkerArray
 
+from rerun_logger.clear_entity import clear_entity
+
 _FRONT_CLEAR_PATHS = ('heightmap/front_clear/fill', 'heightmap/front_clear/outline')
 
 
@@ -33,7 +35,7 @@ def log_local_heightmap(msg: GridMap, *, static: bool = False) -> None:
 
     elevation = _decode_elevation(msg)
     if elevation is None:
-        rr.log("heightmap", [], static=static)
+        clear_entity("heightmap", static=static)
         return
 
     h, w = elevation.shape
@@ -47,7 +49,7 @@ def log_local_heightmap(msg: GridMap, *, static: bool = False) -> None:
 
     valid = np.isfinite(elevation)
     if not valid.any():
-        rr.log("heightmap", [], static=static)
+        clear_entity("heightmap", static=static)
         return
 
     cx = xx[valid].ravel()
@@ -93,6 +95,9 @@ def log_front_clear_markers(msg: MarkerArray, front_clear_frame: str | None) -> 
 
     for marker in msg.markers:
         if marker.action == Marker.DELETEALL:
+            if stamp is None:
+                frame_id = marker.header.frame_id
+                stamp = marker.header.stamp
             continue
         ns_markers.setdefault(marker.ns, []).append(marker)
         if stamp is None:
@@ -100,12 +105,15 @@ def log_front_clear_markers(msg: MarkerArray, front_clear_frame: str | None) -> 
             stamp = marker.header.stamp
 
     if stamp is None:
-        for path in _FRONT_CLEAR_PATHS:
-            rr.log(path, [])
         return front_clear_frame
 
     time = Time.from_msg(stamp)
     rr.set_time("ros_time", timestamp=np.datetime64(time.nanoseconds, "ns"))
+
+    if not ns_markers:
+        for path in _FRONT_CLEAR_PATHS:
+            clear_entity(path)
+        return front_clear_frame
 
     if frame_id and frame_id != front_clear_frame:
         front_clear_frame = frame_id
@@ -140,7 +148,7 @@ def log_front_clear_markers(msg: MarkerArray, front_clear_frame: str | None) -> 
             ),
         )
     else:
-        rr.log('heightmap/front_clear/fill', [])
+        clear_entity('heightmap/front_clear/fill')
 
     outline_markers = ns_markers.get('front_clear_outline', [])
     if outline_markers and outline_markers[0].points:
@@ -160,7 +168,7 @@ def log_front_clear_markers(msg: MarkerArray, front_clear_frame: str | None) -> 
             ),
         )
     else:
-        rr.log('heightmap/front_clear/outline', [])
+        clear_entity('heightmap/front_clear/outline')
 
     return front_clear_frame
 
