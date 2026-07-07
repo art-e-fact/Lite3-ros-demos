@@ -1,0 +1,15 @@
+simulator: mujoco
+headless: false
+scene: procedural://railroad
+procedural_env_seed: 123
+robot:
+  model: m20
+sensors:
+  mid360:
+    enabled: true
+  realsense:
+    enable_depth: false
+    enable_color: false
+rerun:
+  enabled: false
+  spawn: true

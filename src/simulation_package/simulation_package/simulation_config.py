@@ -22,9 +22,23 @@ LEGACY_PACKAGE_NAME = "lite3_sdk_deploy"
 ASSETS_DIR_NAME = "assets"
 DEFAULT_SCENE_URI = "package://simulation_package/assets/lite3_mjcf/mjcf/stairs_floors.xml"
 DEFAULT_ROBOT_DESCRIPTION_URI = "package://simulation_package/assets/lite3_mjcf/mjcf/Lite3.xml"
+M20_ROBOT_DESCRIPTION_URI = "package://simulation_package/assets/m20_mjcf/mjcf/M20.xml"
 DEFAULT_USD_URI = "package://simulation_package/assets/Lite3_usd/Lite3.usd"
 PROCEDURAL_SCENE_PREFIX = "procedural://"
 SUPPORTED_PROCEDURAL_SCENES = {"blocks", "railroad"}
+
+ROBOT_PRESETS: dict[str, dict[str, str | float]] = {
+	"lite3": {
+		"name": "Lite3",
+		"robot_description": DEFAULT_ROBOT_DESCRIPTION_URI,
+		"base_height": 0.43,
+	},
+	"m20": {
+		"name": "M20",
+		"robot_description": M20_ROBOT_DESCRIPTION_URI,
+		"base_height": 1.0,
+	},
+}
 
 
 @dataclass
@@ -130,8 +144,19 @@ class RerunConfig:
 
 @dataclass
 class RobotConfig:
+	model: str = "lite3"
 	robot_description: str = DEFAULT_ROBOT_DESCRIPTION_URI
 	state_frequency_hz: float = 50.0
+
+	def preset(self) -> dict[str, str | float]:
+		key = self.model.strip().lower()
+		if key not in ROBOT_PRESETS:
+			raise ValueError(f"Unknown robot.model '{self.model}', expected one of: {', '.join(sorted(ROBOT_PRESETS))}")
+		return ROBOT_PRESETS[key]
+
+	@property
+	def model_name(self) -> str:
+		return str(self.preset()["name"])
 
 
 @dataclass
@@ -153,12 +178,9 @@ class SimulationConfig:
 
 	@classmethod
 	def from_dict(cls, data: dict[str, Any] | None) -> "SimulationConfig":
-		if data is not None:
-			if "robot_description" in data:
-				robot_data = data.setdefault("robot", {})
-				if isinstance(robot_data, dict):
-					robot_data.setdefault("robot_description", data.pop("robot_description"))
 		config = _dataclass_from_dict(cls, data or {})
+		preset = config.robot.preset()
+		config.robot.robot_description = str(preset["robot_description"])
 		if config.headless and config.rerun.spawn:
 			return config.with_overrides({"rerun.spawn": False})
 		return config
@@ -191,6 +213,11 @@ class SimulationConfig:
 		simulator = self.simulator.lower()
 		if simulator not in {"newton", "mujoco"}:
 			errors.append("simulator must be 'newton' or 'mujoco'")
+
+		try:
+			self.robot.preset()
+		except ValueError as exc:
+			errors.append(str(exc))
 
 		scene_value = str(self.scene).strip()
 		procedural_scene = self.procedural_scene_name()
@@ -332,6 +359,7 @@ def resolve_path(path_value: str | os.PathLike[str], must_exist: bool = False) -
 		for base in (
 			root,
 			root / "lite3_mjcf" / "mjcf",
+			root / "m20_mjcf" / "mjcf",
 			root / "Lite3_usd",
 			root / "realsense_d435i",
 			root / "mid360",

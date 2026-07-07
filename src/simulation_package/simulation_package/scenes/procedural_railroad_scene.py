@@ -809,11 +809,11 @@ def _make_follow_target_updater(
 
 def _build_railroad_scene_xml(
     net: RailNetwork,
-    lite3_xml_path: str,
+    robot_xml_path: str,
     terrain: TerrainSpec | None = None,
 ) -> str:
-    root = Element("mujoco", model="lite3 rail scene")
-    SubElement(root, "include", file=lite3_xml_path)
+    root = Element("mujoco", model="rail scene")
+    SubElement(root, "include", file=robot_xml_path)
     SubElement(root, "statistic", center="0 0 0.1", extent="0.8")
 
     vis = SubElement(root, "visual")
@@ -915,7 +915,7 @@ def _build_railroad_scene_xml(
 
 
 def build_railroad_spec(
-    lite3_xml_path: str,
+    robot_xml_path: str,
     seed: int,
     n_roads: int = 1,
     terrain: TerrainSpec | None | object = _TERRAIN_DEFAULT,
@@ -933,7 +933,7 @@ def build_railroad_spec(
     )
     xml_str = _build_railroad_scene_xml(
         scene.net,
-        lite3_xml_path=lite3_xml_path,
+        robot_xml_path=robot_xml_path,
         terrain=scene.terrain,
     )
 
