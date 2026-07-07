@@ -18,12 +18,23 @@ Note: All the ROS environments are build under the `rosbuild` folder. You can de
 
 ### Run rail-following demo
 _Note: The simulation and the robot controller are requiring different ROS 2 versions, so we need to start them as separate processes._
+
+**Lite3:**
 ```bash
 pixi run sim-rail-follow
 ```
 In a separate terminal, run before the target gets too far in the simulation:
 ```bash
 pixi run nav-rail-follow
+```
+
+**M20:**
+```bash
+pixi run sim-rail-follow-m20
+```
+In a separate terminal:
+```bash
+pixi run nav-rail-follow-m20
 ```
 
 ### Running tests with pytest

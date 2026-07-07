@@ -1,4 +1,5 @@
 import os
+import shlex
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -14,6 +15,9 @@ def launch_setup(context, *args, **kwargs):
     )
     params_file = LaunchConfiguration('params_file').perform(context)
     follow_mode = LaunchConfiguration('follow_mode').perform(context).strip()
+    deploy_package = LaunchConfiguration('deploy_package').perform(context).strip()
+    deploy_executable = LaunchConfiguration('deploy_executable').perform(context).strip()
+    deploy_args_raw = LaunchConfiguration('deploy_args').perform(context).strip()
 
     follower_overrides = {}
     if follow_mode:
@@ -47,13 +51,14 @@ def launch_setup(context, *args, **kwargs):
         ])
 
     if use_rl_deploy_controller:
+        deploy_args = shlex.split(deploy_args_raw) if deploy_args_raw else []
         actions.append(
             Node(
-                package='lite3_sdk_deploy',
-                executable='rl_deploy',
+                package=deploy_package,
+                executable=deploy_executable,
                 name='rl_deploy',
                 output='screen',
-                arguments=['--twist'],
+                arguments=deploy_args,
             )
         )
 
@@ -73,7 +78,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'use_rl_deploy_controller',
             default_value='true',
-            description='Launch lite3_sdk_deploy rl_deploy to convert /cmd_vel into joint commands',
+            description='Launch rl_deploy to convert /cmd_vel into joint commands',
         ),
         DeclareLaunchArgument(
             'params_file',
@@ -84,6 +89,21 @@ def generate_launch_description():
             'follow_mode',
             default_value='',
             description='Override follow_mode from params_file (auto or teleop). Leave unset to use the yaml value.',
+        ),
+        DeclareLaunchArgument(
+            'deploy_package',
+            default_value='lite3_sdk_deploy',
+            description='ROS package providing rl_deploy (e.g. lite3_sdk_deploy or m20_sdk_deploy)',
+        ),
+        DeclareLaunchArgument(
+            'deploy_executable',
+            default_value='rl_deploy',
+            description='Executable name for the low-level RL deploy controller',
+        ),
+        DeclareLaunchArgument(
+            'deploy_args',
+            default_value='--twist',
+            description='Arguments passed to rl_deploy (e.g. --twist for /cmd_vel input)',
         ),
         OpaqueFunction(function=launch_setup),
     ])
