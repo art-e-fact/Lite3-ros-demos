@@ -6,7 +6,12 @@ robot:
   model: m20
 sensors:
   mid360:
+    enabled: false
+  robosense:
     enabled: true
+    column_downsample: 1
+    channels: 48 #96
+    columns: 224 #448
   realsense:
     enable_depth: false
     enable_color: false

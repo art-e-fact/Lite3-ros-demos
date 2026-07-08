@@ -4,7 +4,8 @@
 
 local_heightmap_node:
   ros__parameters:
-    cloud_topic: /mid360/points
+    # cloud_topic: /mid360/points
+    cloud_topic: /lidar_front/points
     odom_topic: /odom
     heightmap_topic: /local_heightmap
     map_frame: odom
@@ -17,13 +18,13 @@ local_heightmap_node:
     min_range: 0.2
     max_range: 12.0
     stale_time_sec: 100.0
-    front_clear_enabled: false
+    front_clear_enabled: true
     front_clear_length: 2.5
     front_clear_width: 1.0
     front_clear_offset_x: 0.25
     front_stale_time_sec: 0.75
     max_pose_variance: 0.0
-    visibility_cleanup_enabled: true
+    visibility_cleanup_enabled: false
     visibility_cleanup_tolerance: 0.05
 
 rail_detector_node:

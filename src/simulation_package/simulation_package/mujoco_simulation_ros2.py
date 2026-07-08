@@ -26,6 +26,7 @@ from sensors.mujoco.lidar_sensor import LidarSensor
 from sensors.mujoco.depth_sensor import DepthSensor
 from sensors.mujoco.follow_camera_recorder import FollowCameraRecorder
 from sensors.mujoco.mid360_lidar_sensor import Mid360LidarSensor
+from sensors.mujoco.robosense_lidar_sensor import RobosenseLidarSuite
 from scenes.procedural_railroad_scene import build_railroad_spec
 from scenes.procedural_scene_generator import build_procedural_spec
 from simulation_config import SimulationConfig
@@ -145,6 +146,7 @@ class MuJoCoSimulationNode(Node):
         self.declare_parameter('headless', config.headless)
         self.declare_parameter('enable_lidar', config.sensors.lidar_2d.enabled)
         self.declare_parameter('enable_mid360', config.sensors.mid360.enabled)
+        self.declare_parameter('enable_robosense', config.sensors.robosense.enabled)
         self.declare_parameter('enable_depth', config.sensors.realsense.enable_depth)
         self.declare_parameter('enable_color', config.sensors.realsense.enable_color)
         self.declare_parameter('enable_pointcloud', config.sensors.realsense.enable_pointcloud)
@@ -161,6 +163,7 @@ class MuJoCoSimulationNode(Node):
             "headless": _as_bool(self.get_parameter('headless').value, config.headless),
             "sensors.lidar_2d.enabled": _as_bool(self.get_parameter('enable_lidar').value, config.sensors.lidar_2d.enabled),
             "sensors.mid360.enabled": _as_bool(self.get_parameter('enable_mid360').value, config.sensors.mid360.enabled),
+            "sensors.robosense.enabled": _as_bool(self.get_parameter('enable_robosense').value, config.sensors.robosense.enabled),
             "sensors.realsense.enable_depth": _as_bool(self.get_parameter('enable_depth').value, config.sensors.realsense.enable_depth),
             "sensors.realsense.enable_color": _as_bool(self.get_parameter('enable_color').value, config.sensors.realsense.enable_color),
             "sensors.realsense.enable_pointcloud": _as_bool(self.get_parameter('enable_pointcloud').value, config.sensors.realsense.enable_pointcloud),
@@ -321,6 +324,10 @@ class MuJoCoSimulationNode(Node):
         self.mid360 = Mid360LidarSensor(self.model, self.data, self, self.viewer, config=config.sensors.mid360)
         self.mid360_step_interval = max(1, int(1.0 / (config.sensors.mid360.frequency_hz * DT)))
 
+        self.robosense = RobosenseLidarSuite(
+            self.model, self.data, self, config=config.sensors.robosense, dt=DT,
+        )
+
         # Depth camera sensor (RealSense D435i)
         self.depth = DepthSensor(
             self.model, self.data, self, self.viewer,
@@ -405,6 +412,7 @@ class MuJoCoSimulationNode(Node):
         transforms = []
         transforms.extend(self.lidar.get_static_transforms(stamp))
         transforms.extend(self.mid360.get_static_transforms(stamp))
+        transforms.extend(self.robosense.get_static_transforms(stamp))
         transforms.extend(self.depth.get_static_transforms(stamp))
         if transforms:
             self.static_tf_broadcaster.sendTransform(transforms)
@@ -560,6 +568,8 @@ class MuJoCoSimulationNode(Node):
 
                     if step % self.mid360_step_interval == 0:
                         self.mid360.update(stamp)
+
+                    self.robosense.update(stamp, step)
 
                     # Depth camera
                     if step % self.depth_step_interval == 0:

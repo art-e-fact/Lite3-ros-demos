@@ -113,6 +113,34 @@ class Mid360Config:
 
 
 @dataclass
+class RobosenseUnitConfig:
+	site_name: str = "lidar_front_site"
+	frame_id: str = "lidar_front"
+	topic: str = "/lidar_front/points"
+
+
+@dataclass
+class RobosenseConfig:
+	enabled: bool = False
+	frequency_hz: float = 10.0
+	channels: int = 96
+	columns: int = 448
+	column_downsample: int = 8
+	v_fov_deg: list[float] = field(default_factory=lambda: [-45.0, 45.0])
+	range_min: float = 0.1
+	range_max: float = 30.0
+	enable_rear: bool = True
+	front: RobosenseUnitConfig = field(default_factory=RobosenseUnitConfig)
+	rear: RobosenseUnitConfig = field(
+		default_factory=lambda: RobosenseUnitConfig(
+			site_name="lidar_back_site",
+			frame_id="lidar_back",
+			topic="/lidar_back/points",
+		)
+	)
+
+
+@dataclass
 class FollowCameraConfig:
 	enabled: bool = False
 	video_path: str = ""
@@ -132,6 +160,7 @@ class SensorsConfig:
 	realsense: RealsenseConfig = field(default_factory=RealsenseConfig)
 	lidar_2d: Lidar2DConfig = field(default_factory=Lidar2DConfig)
 	mid360: Mid360Config = field(default_factory=Mid360Config)
+	robosense: RobosenseConfig = field(default_factory=RobosenseConfig)
 	follow_camera: FollowCameraConfig = field(default_factory=FollowCameraConfig)
 
 
@@ -258,6 +287,17 @@ class SimulationConfig:
 		_validate_positive(errors, "sensors.mid360.samples_per_scan", sensors.mid360.samples_per_scan)
 		_validate_positive(errors, "sensors.mid360.downsample", sensors.mid360.downsample)
 		_validate_range(errors, "sensors.mid360", sensors.mid360.range_min, sensors.mid360.range_max)
+		if sensors.robosense.enabled and simulator != "mujoco":
+			errors.append("sensors.robosense is only supported by the MuJoCo simulator")
+		_validate_positive(errors, "sensors.robosense.frequency_hz", sensors.robosense.frequency_hz)
+		_validate_positive(errors, "sensors.robosense.channels", sensors.robosense.channels)
+		_validate_positive(errors, "sensors.robosense.columns", sensors.robosense.columns)
+		_validate_positive(errors, "sensors.robosense.column_downsample", sensors.robosense.column_downsample)
+		_validate_range(errors, "sensors.robosense", sensors.robosense.range_min, sensors.robosense.range_max)
+		if len(sensors.robosense.v_fov_deg) != 2:
+			errors.append("sensors.robosense.v_fov_deg must have exactly two elements [min, max]")
+		elif sensors.robosense.v_fov_deg[0] >= sensors.robosense.v_fov_deg[1]:
+			errors.append("sensors.robosense.v_fov_deg min must be less than max")
 		if sensors.follow_camera.enabled and simulator != "mujoco":
 			errors.append("sensors.follow_camera is only supported by the MuJoCo simulator")
 		if sensors.follow_camera.enabled and not str(sensors.follow_camera.video_path).strip():
