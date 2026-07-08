@@ -68,9 +68,9 @@ rail_target_follower_node:
     follow_distance: 1.5
     target_distance_deadband: 0.1
     min_linear_x: 0.35
-    max_linear_x: 0.45
+    max_linear_x: 0.95
     distance_error_for_max_speed: 1.5
-    max_linear_y: 0.4
+    max_linear_y: 0.7
     max_angular_z: 0.5
     k_center: 1.0
     k_heading: 1.2
