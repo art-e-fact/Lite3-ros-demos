@@ -42,7 +42,10 @@ pixi run nav-rail-follow-m20
 pixi run test-sim-sensors
 pixi run test-rail-follow
 pixi run test-rerun-recording
+pixi run test-rerun-recording-m20   # M20 with Robosense lidar
 ```
+
+Pass `--robot m20` (or `--robot lite3`) to `test_rerun_recording.py` directly for other pytest invocations.
 
 
 ### Running tests with Artefacts
