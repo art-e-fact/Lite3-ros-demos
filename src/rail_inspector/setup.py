@@ -39,6 +39,7 @@ setup(
             'rail_detector_node = rail_inspector.rail_detector_node:main',
             'rail_target_follower_node = rail_inspector.rail_target_follower_node:main',
             'relay_node = rail_inspector.relay_node:main',
+            'drive_watchdog_node = rail_inspector.drive_watchdog_node:main',
         ],
     },
 )

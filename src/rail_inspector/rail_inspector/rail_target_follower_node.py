@@ -5,7 +5,7 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.node import Node
-from std_msgs.msg import Float32
+from std_msgs.msg import Bool, Float32
 
 
 def _clamp(value, lower, upper):
@@ -86,6 +86,12 @@ class RailTargetFollowerNode(Node):
             'Input Twist topic for teleop forward speed command along the rail.',
             read_only=True,
         )
+        self.emergency_stop_topic = declare(
+            'emergency_stop_topic',
+            '/emergency_stop',
+            'Input Bool topic; True latches a stop (e.g. published by drive_watchdog_node).',
+            read_only=True,
+        )
         self.control_rate_hz = float(declare(
             'control_rate_hz',
             15.0,
@@ -158,6 +164,7 @@ class RailTargetFollowerNode(Node):
         self.latest_target_distance = -1.0
         self.latest_odom_yaw = float('nan')
         self.latest_teleop_speed = 0.0
+        self.latest_emergency_stop = False
 
         self.center_offset_walltime = float('-inf')
         self.tangent_yaw_walltime = float('-inf')
@@ -171,6 +178,7 @@ class RailTargetFollowerNode(Node):
         self.create_subscription(Float32, self.target_distance_topic, self.target_distance_callback, 10)
         self.create_subscription(Odometry, self.odom_topic, self.odom_callback, 20)
         self.create_subscription(Twist, self.follow_rail_speed_topic, self.teleop_speed_callback, 10)
+        self.create_subscription(Bool, self.emergency_stop_topic, self.emergency_stop_callback, 10)
         self.control_timer = self.create_timer(
             1.0 / max(1e-6, self.control_rate_hz),
             self.control_callback,
@@ -201,7 +209,15 @@ class RailTargetFollowerNode(Node):
         self.latest_teleop_speed = float(msg.linear.x)
         self.teleop_speed_walltime = self.get_clock().now().nanoseconds / 1e9
 
+    def emergency_stop_callback(self, msg):
+        self.latest_emergency_stop = bool(msg.data)
+
     def control_callback(self):
+        if self.latest_emergency_stop:
+            self.publish_stop()
+            self.get_logger().error('Emergency stop active; stopping.', throttle_duration_sec=2.0)
+            return
+
         now = self.get_clock().now().nanoseconds / 1e9
         if self._is_stale(now):
             self.publish_stop()

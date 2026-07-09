@@ -12,6 +12,10 @@ def launch_setup(context, *args, **kwargs):
     use_rl_deploy_controller = (
         LaunchConfiguration('use_rl_deploy_controller').perform(context).strip().lower() == 'true'
     )
+    enable_drive_watchdog = (
+        LaunchConfiguration('enable_drive_watchdog').perform(context).strip().lower() == 'true'
+    )
+    drive_label = LaunchConfiguration('drive_label').perform(context)
     params_file = LaunchConfiguration('params_file').perform(context)
     follow_mode = LaunchConfiguration('follow_mode').perform(context).strip()
 
@@ -57,6 +61,17 @@ def launch_setup(context, *args, **kwargs):
             )
         )
 
+    if enable_drive_watchdog:
+        actions.append(
+            Node(
+                package='rail_inspector',
+                executable='drive_watchdog_node',
+                name='drive_watchdog_node',
+                output='screen',
+                parameters=[{'drive_label': drive_label}],
+            )
+        )
+
     return actions
 
 
@@ -84,6 +99,16 @@ def generate_launch_description():
             'follow_mode',
             default_value='',
             description='Override follow_mode from params_file (auto or teleop). Leave unset to use the yaml value.',
+        ),
+        DeclareLaunchArgument(
+            'enable_drive_watchdog',
+            default_value='true',
+            description='Launch drive_watchdog_node, which publishes /emergency_stop when the watched drive is removed.',
+        ),
+        DeclareLaunchArgument(
+            'drive_label',
+            default_value='NO NAME',
+            description='Volume label of the USB drive to watch (works on both macOS sim and Linux robot).',
         ),
         OpaqueFunction(function=launch_setup),
     ])
