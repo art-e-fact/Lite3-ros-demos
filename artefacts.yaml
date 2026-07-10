@@ -59,3 +59,23 @@ jobs:
       settings:
         - name: rerun_recording
           run: "pixi run -e nav-test test-rerun-recording"
+
+  test-rerun-recording-m20:
+    type: test
+    timeout: 5 # minutes
+    package:
+      docker:
+        build:
+          dockerfile: empty
+    runtime:
+      framework: other
+      simulator: mujoco
+      
+    scenarios:
+      defaults:
+        params:
+          headless: "true"
+          min_distance_to_travel: "10.0"
+      settings:
+        - name: rerun_recording_m20
+          run: "pixi run -e nav-test test-rerun-recording-m20"

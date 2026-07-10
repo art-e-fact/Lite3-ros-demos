@@ -1,5 +1,7 @@
 import pytest
 
+from robot_profiles import get_robot_profile
+
 try:
     from artefacts_toolkit.config import get_artefacts_params
 except Exception:
@@ -10,14 +12,17 @@ def _parse_bool(value) -> bool:
     return str(value).strip().lower() in ('true', '1', 'yes', 'on')
 
 
-def _artefacts_headless() -> bool:
+def _artefacts_params() -> dict:
     if get_artefacts_params is None:
-        return False
+        return {}
     try:
-        params = get_artefacts_params()
+        return get_artefacts_params()
     except Exception:
-        return False
-    return _parse_bool(params.get('headless', 'false'))
+        return {}
+
+
+def _artefacts_headless() -> bool:
+    return _parse_bool(_artefacts_params().get('headless', 'false'))
 
 
 def pytest_addoption(parser):
@@ -27,6 +32,13 @@ def pytest_addoption(parser):
         default=False,
         help='Run simulation without GUI (no MuJoCo viewer, no Rerun spawn)',
     )
+    parser.addoption(
+        '--robot',
+        action='store',
+        default='lite3',
+        choices=['lite3', 'm20'],
+        help='Robot profile for integration tests (lite3 or m20)',
+    )
 
 
 @pytest.fixture(scope='session')
@@ -34,3 +46,10 @@ def headless(request):
     if request.config.getoption('--headless'):
         return True
     return _artefacts_headless()
+
+
+@pytest.fixture(scope='session')
+def robot_profile(request):
+    params = _artefacts_params()
+    robot_name = params.get('robot') or request.config.getoption('--robot')
+    return get_robot_profile(str(robot_name).strip().lower())

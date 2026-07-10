@@ -69,6 +69,16 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         self.subscribe("/tf_static", TFMessage, self.tf_callback, latching=True)
         self.subscribe("/mid360/points", PointCloud2, self.scan_callback)
         self.subscribe("/livox/lidar", PointCloud2, self.scan_callback)
+        self.subscribe(
+            "/lidar_front/points",
+            PointCloud2,
+            lambda msg: self.scan_callback(msg, entity_path="scan/lidar_front"),
+        )
+        self.subscribe(
+            "/lidar_back/points",
+            PointCloud2,
+            lambda msg: self.scan_callback(msg, entity_path="scan/lidar_back"),
+        )
         rr.log_file_from_path(
             file_path=ROBOT_PATH,
             entity_path_prefix="urdf",
@@ -152,7 +162,7 @@ class RerunSubscriber(Node):  # type: ignore[misc]
             static=True,
         )
 
-    def scan_callback(self, cloud: PointCloud2) -> None:
+    def scan_callback(self, cloud: PointCloud2, entity_path: str = "scan") -> None:
         """
         Logs a PointCloud2 message to Rerun.
         """
@@ -164,8 +174,8 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         pts = structured_to_unstructured(pts)
 
         # Log to Rerun as Points3D
-        rr.log("scan", rr.Points3D(positions=pts, colors=[255, 165, 0], radii=0.01))
-        rr.log("scan", rr.CoordinateFrame(frame=cloud.header.frame_id))
+        rr.log(entity_path, rr.Points3D(positions=pts, colors=[255, 165, 0], radii=0.01))
+        rr.log(entity_path, rr.CoordinateFrame(frame=cloud.header.frame_id))
 
     def tf_callback(self, tf_msg: TFMessage) -> None:
         """

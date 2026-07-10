@@ -51,13 +51,25 @@ def _sensor_config(simulator: str, sensor: str, topics: dict[str, str]) -> dict:
             "color_info_topic": topics["color_info"],
             "pointcloud_topic": topics["realsense_points"],
         }
+    elif sensor == "robosense":
+        config["robot"] = {"model": "m20"}
+        config["sensors"]["robosense"] = {
+            "enabled": True,
+            "channels": 8,
+            "columns": 32,
+            "column_downsample": 1,
+            "enable_rear": True,
+            "front": {"topic": topics["lidar_front"]},
+            "rear": {"topic": topics["lidar_back"]},
+        }
     else:
         raise ValueError(f"unsupported sensor: {sensor}")
     return config
 
 
 def _topics(simulator: str, sensor: str) -> dict[str, str]:
-    base = f"/lite3_sensor_test/{simulator}/{sensor}"
+    robot = "m20" if sensor == "robosense" else "lite3"
+    base = f"/{robot}_sensor_test/{simulator}/{sensor}"
     return {
         "scan": f"{base}/scan",
         "mid360": f"{base}/mid360/points",
@@ -66,6 +78,8 @@ def _topics(simulator: str, sensor: str) -> dict[str, str]:
         "color_image": f"{base}/camera/color/image_raw",
         "color_info": f"{base}/camera/color/camera_info",
         "realsense_points": f"{base}/camera/depth/color/points",
+        "lidar_front": f"{base}/lidar_front/points",
+        "lidar_back": f"{base}/lidar_back/points",
     }
 
 
@@ -85,6 +99,11 @@ def _expected_topics(sensor: str, topics: dict[str, str]) -> list[ExpectedTopic]
             ExpectedTopic(topics["color_image"], Image, lambda msg: msg.header.frame_id == "camera_color_optical_frame" and _has_image_data(msg, "rgb8")),
             ExpectedTopic(topics["color_info"], CameraInfo, lambda msg: msg.header.frame_id == "camera_color_optical_frame" and _has_camera_info(msg)),
             ExpectedTopic(topics["realsense_points"], PointCloud2, lambda msg: msg.header.frame_id == "camera_depth_optical_frame" and _has_points(msg)),
+        ]
+    if sensor == "robosense":
+        return [
+            ExpectedTopic(topics["lidar_front"], PointCloud2, lambda msg: msg.header.frame_id == "lidar_front" and _has_points(msg)),
+            ExpectedTopic(topics["lidar_back"], PointCloud2, lambda msg: msg.header.frame_id == "lidar_back" and _has_points(msg)),
         ]
     raise ValueError(f"unsupported sensor: {sensor}")
 
@@ -253,3 +272,7 @@ def test_simulation_publishes_mid360(tmp_path, simulator):
 @pytest.mark.parametrize("simulator", ["mujoco", "newton"])
 def test_simulation_publishes_realsense_outputs(tmp_path, simulator):
     _run_sensor_test(tmp_path, simulator, "realsense")
+
+
+def test_simulation_publishes_robosense_outputs(tmp_path):
+    _run_sensor_test(tmp_path, "mujoco", "robosense")

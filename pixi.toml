@@ -92,6 +92,11 @@ cmd = "pytest src/rail_inspector/test/test_rerun_recording.py -vv -s"
 default-environment = "nav-test"
 depends-on = ["build"]
 
+[tasks.test-rerun-recording-m20]
+cmd = "pytest src/rail_inspector/test/test_rerun_recording.py --robot m20 -vv -s"
+default-environment = "nav-test"
+depends-on = ["build"]
+
 [tasks.sim-rail-follow]
 cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/mujoco_procedural_railroad.yaml"
 default-environment = "sim"
@@ -103,8 +108,23 @@ cmd = "mjpython -m simulation_package.start_simulation --config src/simulation_p
 default-environment = "sim"
 depends-on = ["build"]
 
+[tasks.sim-rail-follow-m20]
+cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/mujoco_procedural_railroad_m20.yaml"
+default-environment = "sim"
+depends-on = ["build"]
+
+[target.osx-arm64.tasks.sim-rail-follow-m20]
+cmd = "mjpython -m simulation_package.start_simulation --config src/simulation_package/config/mujoco_procedural_railroad_m20.yaml"
+default-environment = "sim"
+depends-on = ["build"]
+
 [tasks.nav-rail-follow]
 cmd = "ros2 launch rail_inspector rail_target_follow.launch.py"
+default-environment = "nav"
+depends-on = ["build-nav"]
+
+[tasks.nav-rail-follow-m20]
+cmd = "ros2 launch rail_inspector rail_target_follow.launch.py params_file:=$(ros2 pkg prefix rail_inspector)/share/rail_inspector/config/rail_follow_sim_m20.yaml deploy_package:=m20_sdk_deploy deploy_args:=--twist"
 default-environment = "nav"
 depends-on = ["build-nav"]
 

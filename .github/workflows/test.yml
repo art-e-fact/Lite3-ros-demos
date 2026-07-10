@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test-task: [test-rerun-recording, test-sim-sensors]
+        test-task: [test-sim-sensors, test-rerun-recording, test-rerun-recording-m20]
 
     steps:
       - name: Checkout repository

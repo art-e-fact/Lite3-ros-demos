@@ -15,7 +15,6 @@ import argparse
 import math
 import random
 import tempfile
-from pathlib import Path
 from typing import Callable
 from xml.sax.saxutils import quoteattr
 from scipy.spatial.transform import Rotation
@@ -27,9 +26,10 @@ from sensors.mujoco.lidar_sensor import LidarSensor
 from sensors.mujoco.depth_sensor import DepthSensor
 from sensors.mujoco.follow_camera_recorder import FollowCameraRecorder
 from sensors.mujoco.mid360_lidar_sensor import Mid360LidarSensor
+from sensors.mujoco.robosense_lidar_sensor import RobosenseLidarSuite
 from scenes.procedural_railroad_scene import build_railroad_spec
 from scenes.procedural_scene_generator import build_procedural_spec
-from simulation_config import SimulationConfig, resolve_path
+from simulation_config import SimulationConfig
 
 import rclpy
 from rclpy.node import Node
@@ -42,17 +42,6 @@ from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 
 
-
-MODEL_NAME = "Lite3"
-# Get the directory of the current Python file
-CURRENT_DIR = Path(__file__).resolve().parent
-
-
-def _resolve_resource_path(*parts: str) -> str:
-    return str(resolve_path(Path(*parts), must_exist=False))
-
-# Define the default XML path relative to the Python file
-XML_PATH = _resolve_resource_path("lite3_mjcf", "mjcf", "Lite3_stair.xml")
 
 USE_VIEWER = True
 
@@ -100,8 +89,31 @@ JOINT_INIT = {
     "Lite3": np.array([0, -1.35453, 2.54948,
                      0, -1.35453, 2.54948,
                      0, -1.35453, 2.54948,
-                     0, -1.35453, 2.54948,], dtype=np.float32),
+                     0, -1.35453, 2.54948], dtype=np.float32),
+    "M20": np.array([-0.438, -1.16, 2.76, 0,
+                     0.438, -1.16, 2.76, 0,
+                     -0.438, 1.16, -2.76, 0,
+                     0.438, 1.16, -2.76, 0], dtype=np.float32),
 }
+
+# M20 sim-to-policy frame (encode/decode matches DdsInterface::Handler and SetJointCommand).
+# Use M20Interface initial pos_offset values so Handler decode yields raw MuJoCo qpos.
+M20_JOINT_DIR = np.array(
+    [1, 1, -1, 1, 1, -1, 1, -1, -1, 1, -1, 1, -1, -1, 1, -1],
+    dtype=np.float32,
+)
+M20_POS_OFFSET_DEG = np.array(
+    [-25, -131, 160, 0, 25, -131, 160, 0, -25, 131, -160, 0, 25, 131, -160, 0],
+    dtype=np.float32,
+)
+M20_POS_OFFSET_RAD = M20_POS_OFFSET_DEG / 180.0 * np.pi
+
+
+def _find_accel_sensor_adr(model: mujoco.MjModel) -> int:
+    for sensor_id in range(model.nsensor):
+        if model.sensor_type[sensor_id] == mujoco.mjtSensor.mjSENS_ACCELEROMETER:
+            return int(model.sensor_adr[sensor_id])
+    return -1
 
 
 SceneUpdater = Callable[[mujoco.MjModel, mujoco.MjData, float], bool]
@@ -115,7 +127,6 @@ def _as_bool(value, default: bool = False) -> bool:
 
 class MuJoCoSimulationNode(Node):
     def __init__(self,
-                 model_key: str = MODEL_NAME,
                  xml_path: str | None = None,
                  config: SimulationConfig | None = None):
 
@@ -125,11 +136,17 @@ class MuJoCoSimulationNode(Node):
         if xml_path:
             config = config.with_overrides({"scene": xml_path})
 
+        robot_preset = config.robot.preset()
+        self.model_key = config.robot.model_name
+        self.base_height = float(robot_preset["base_height"])
+        self._m20_joint_calib = self.model_key == "M20"
+
         self.declare_parameter('scene', config.scene)
         self.declare_parameter('procedural_env_seed', config.procedural_env_seed)
         self.declare_parameter('headless', config.headless)
         self.declare_parameter('enable_lidar', config.sensors.lidar_2d.enabled)
         self.declare_parameter('enable_mid360', config.sensors.mid360.enabled)
+        self.declare_parameter('enable_robosense', config.sensors.robosense.enabled)
         self.declare_parameter('enable_depth', config.sensors.realsense.enable_depth)
         self.declare_parameter('enable_color', config.sensors.realsense.enable_color)
         self.declare_parameter('enable_pointcloud', config.sensors.realsense.enable_pointcloud)
@@ -146,6 +163,7 @@ class MuJoCoSimulationNode(Node):
             "headless": _as_bool(self.get_parameter('headless').value, config.headless),
             "sensors.lidar_2d.enabled": _as_bool(self.get_parameter('enable_lidar').value, config.sensors.lidar_2d.enabled),
             "sensors.mid360.enabled": _as_bool(self.get_parameter('enable_mid360').value, config.sensors.mid360.enabled),
+            "sensors.robosense.enabled": _as_bool(self.get_parameter('enable_robosense').value, config.sensors.robosense.enabled),
             "sensors.realsense.enable_depth": _as_bool(self.get_parameter('enable_depth').value, config.sensors.realsense.enable_depth),
             "sensors.realsense.enable_color": _as_bool(self.get_parameter('enable_color').value, config.sensors.realsense.enable_color),
             "sensors.realsense.enable_pointcloud": _as_bool(self.get_parameter('enable_pointcloud').value, config.sensors.realsense.enable_pointcloud),
@@ -178,7 +196,7 @@ class MuJoCoSimulationNode(Node):
         scene_meta: dict = {}
         robot_xml_path = config.resolved_robot_description()
         if not os.path.isfile(robot_xml_path):
-            raise FileNotFoundError(f"Cannot find Lite3 robot MJCF: {robot_xml_path}")
+            raise FileNotFoundError(f"Cannot find robot MJCF: {robot_xml_path}")
 
         if procedural_scene == "blocks":
             scene_seed = configured_seed if configured_seed >= 0 else random.randint(0, 2**31 - 1)
@@ -189,7 +207,7 @@ class MuJoCoSimulationNode(Node):
             )
             self.scene_start_pose = tuple(scene_meta.get("robot_start_pose", self.scene_start_pose))
             self.get_logger().info(
-                f"[INFO] Shapes scene enabled (robot=Lite3.xml, world built in Python): "
+                f"[INFO] Shapes scene enabled (robot={self.model_key}, world built in Python): "
                 f"seed={scene_meta['seed']}, nodes={scene_meta['nodes']}, "
                 f"edges={scene_meta['edges']}, obstacles={scene_meta['obstacles']}"
             )
@@ -206,7 +224,7 @@ class MuJoCoSimulationNode(Node):
             )
             self.scene_start_pose = tuple(scene_meta.get("robot_start_pose", self.scene_start_pose))
             self.get_logger().info(
-                f"[INFO] Railroad scene enabled (robot=Lite3.xml, world built in Python): "
+                f"[INFO] Railroad scene enabled (robot={self.model_key}, world built in Python): "
                 f"seed={scene_meta['seed']}, roads={scene_meta['roads']}, "
                 f"mainline_waypoints={len(scene_meta.get('mission_xy', []))}"
             )
@@ -239,14 +257,12 @@ class MuJoCoSimulationNode(Node):
         self.model.opt.timestep = DT
         self.data = mujoco.MjData(self.model)
         self.timestamp = 0.0
+        self.accel_sensor_adr = _find_accel_sensor_adr(self.model)
 
-        # 机器人自由度列表
-        self.actuator_ids = [a for a in range(self.model.nu)]  # 0..11
+        self.actuator_ids = list(range(self.model.nu))
         self.dof_num = len(self.actuator_ids)
-        assert self.dof_num == 12, "Expected 12 DOF for Lite3"
 
-        # 初始化站立姿态
-        self._set_initial_pose(model_key, self.scene_start_pose)
+        self._set_initial_pose(self.model_key, self.scene_start_pose)
         self._update_scene(self.timestamp)
 
         # 缓存
@@ -260,7 +276,9 @@ class MuJoCoSimulationNode(Node):
         # IMU
         self.last_base_linvel = np.zeros((3, 1), np.float64)
 
-        self.get_logger().info(f"[INFO] MuJoCo model loaded, dof = {self.dof_num}")
+        self.get_logger().info(
+            f"[INFO] MuJoCo model loaded: robot={self.model_key}, dof={self.dof_num}"
+        )
 
         # ROS Publishers
         self.imu_pub = self.create_publisher(ImuData, '/IMU_DATA', 200)
@@ -306,6 +324,10 @@ class MuJoCoSimulationNode(Node):
         self.mid360 = Mid360LidarSensor(self.model, self.data, self, self.viewer, config=config.sensors.mid360)
         self.mid360_step_interval = max(1, int(1.0 / (config.sensors.mid360.frequency_hz * DT)))
 
+        self.robosense = RobosenseLidarSuite(
+            self.model, self.data, self, config=config.sensors.robosense, dt=DT,
+        )
+
         # Depth camera sensor (RealSense D435i)
         self.depth = DepthSensor(
             self.model, self.data, self, self.viewer,
@@ -338,7 +360,7 @@ class MuJoCoSimulationNode(Node):
             spawn = config.rerun.spawn and not config.headless
             self.get_logger().info(f"[INFO] Initializing Rerun (spawn={spawn}, save_path={config.rerun.save_path or 'None'})")
 
-            rr.init("lite3_simulation", spawn=spawn)
+            rr.init(f"{config.robot.model}_simulation", spawn=spawn)
             if config.rerun.save_path:
                 save_path = os.path.abspath(config.rerun.save_path)
                 os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -354,11 +376,14 @@ class MuJoCoSimulationNode(Node):
             self.rerun_recorder = rerun_loader_mjcf.MJCFRecorder(self.rerun_logger, timeline_name="sim_time")
 
     def _set_initial_pose(self, key: str, base_pose: tuple[float, float, float]):
-        """关节位置设置为与 PyBullet 脚本一致的初始角度"""
+        """Set joint positions to match the initial angles used in the PyBullet script."""
+        if key not in JOINT_INIT:
+            raise ValueError(f"No joint init pose for robot model '{key}'")
+
         x, y, yaw = base_pose
         qpos0 = self.data.qpos.copy()
-        qpos0[7:7 + self.dof_num] = JOINT_INIT[key]  # ,3-6 basequat，0-2 basepos
-        qpos0[:3] = np.array([x, y, 0.43])
+        qpos0[7:7 + self.dof_num] = JOINT_INIT[key]
+        qpos0[:3] = np.array([x, y, self.base_height])
         qpos0[3:7] = np.array([math.cos(yaw / 2), 0, 0, math.sin(yaw / 2)])
         self.data.qpos[:] = qpos0
         mujoco.mj_forward(self.model, self.data)
@@ -387,6 +412,7 @@ class MuJoCoSimulationNode(Node):
         transforms = []
         transforms.extend(self.lidar.get_static_transforms(stamp))
         transforms.extend(self.mid360.get_static_transforms(stamp))
+        transforms.extend(self.robosense.get_static_transforms(stamp))
         transforms.extend(self.depth.get_static_transforms(stamp))
         if transforms:
             self.static_tf_broadcaster.sendTransform(transforms)
@@ -492,16 +518,20 @@ class MuJoCoSimulationNode(Node):
 
         pub_pos = np.zeros(self.dof_num, dtype=np.float32)
         pub_vel = np.zeros(self.dof_num, dtype=np.float32)
-        # 兼容长度为16的命令，仅读取前12个关节
         for i in range(self.dof_num):
             joint_cmd = msg.data.joints_data[i]
             self.kp_cmd[i] = joint_cmd.kp
             self.kd_cmd[i] = joint_cmd.kd
-            # pub_pos[i] = joint_cmd.position
-            # pub_vel[i] = joint_cmd.velocity
-            self.pos_cmd[i] = joint_cmd.position
-            self.vel_cmd[i] = joint_cmd.velocity
+            pub_pos[i] = joint_cmd.position
+            pub_vel[i] = joint_cmd.velocity
             self.tau_ff[i] = joint_cmd.torque  # tau_ff no processing
+
+        if self._m20_joint_calib:
+            self.pos_cmd.flat = pub_pos * M20_JOINT_DIR + M20_POS_OFFSET_RAD
+            self.vel_cmd.flat = pub_vel * M20_JOINT_DIR
+        else:
+            self.pos_cmd.flat = pub_pos
+            self.vel_cmd.flat = pub_vel
 
     def start(self):
         # 主模拟循环
@@ -538,6 +568,8 @@ class MuJoCoSimulationNode(Node):
 
                     if step % self.mid360_step_interval == 0:
                         self.mid360.update(stamp)
+
+                    self.robosense.update(stamp, step)
 
                     # Depth camera
                     if step % self.depth_step_interval == 0:
@@ -607,8 +639,11 @@ class MuJoCoSimulationNode(Node):
         rpy = self.quaternion_to_euler(q_world)
         # ImuDataValue expects degrees for roll/pitch/yaw
         rpy_deg = np.rad2deg(rpy)
-        # body_acc = self.data.sensordata[4:7]
-        body_acc = self.data.sensordata[16:19]
+        if self.accel_sensor_adr >= 0:
+            adr = self.accel_sensor_adr
+            body_acc = self.data.sensordata[adr:adr + 3]
+        else:
+            body_acc = np.zeros(3, dtype=np.float64)
         angvel_b = self.data.qvel[3:6]  # body frame
 
         imu_msg = ImuData()
@@ -632,10 +667,15 @@ class MuJoCoSimulationNode(Node):
         dq = self.data.qvel[6:6 + self.dof_num]
         tau = self.input_tq.flatten()
 
-        pub_pos = q
-        pub_vel = dq
-        pub_tau = tau
-        
+        if self._m20_joint_calib:
+            pub_pos = (q - M20_POS_OFFSET_RAD) * M20_JOINT_DIR
+            pub_vel = dq * M20_JOINT_DIR
+            pub_tau = tau * M20_JOINT_DIR
+        else:
+            pub_pos = q
+            pub_vel = dq
+            pub_tau = tau
+
         joints_msg = JointsData()
         joints_msg.header = MetaType()
         joints_msg.header.frame_id = 0
@@ -674,7 +714,7 @@ def run_mujoco(config: SimulationConfig, ros_args: list[str] | None = None):
 
 def main():
     np.set_printoptions(precision=4, suppress=True)
-    parser = argparse.ArgumentParser(description="Run Lite3 MuJoCo ROS2 simulation")
+    parser = argparse.ArgumentParser(description="Run MuJoCo ROS2 simulation")
     parser.add_argument("--config", default=None, help="Path to simulation YAML config")
     args, ros_args = parser.parse_known_args()
 

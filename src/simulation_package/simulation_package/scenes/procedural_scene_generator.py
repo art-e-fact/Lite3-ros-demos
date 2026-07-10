@@ -461,21 +461,21 @@ def _populate_obstacles(
 
 
 def build_procedural_spec(
-    lite3_xml_path: str,
+    robot_xml_path: str,
     robot_start_xy: Tuple[float, float],
     seed: int,
     config: GeneratorConfig | None = None,
 ) -> Tuple[mujoco.MjSpec, dict]:
-    """Build a full MuJoCo spec procedurally, including only the Lite3 robot from XML.
+    """Build a full MuJoCo spec procedurally, including only the robot from XML.
 
     The returned spec contains:
-      * everything from ``Lite3.xml`` EXCEPT the authored floor and lights
+      * everything from the robot MJCF EXCEPT the authored floor and lights
       * a fresh ground plane (Python-authored)
       * a directional overhead light (Python-authored)
       * procedurally placed obstacles
 
     Args:
-        lite3_xml_path: Absolute path to ``Lite3.xml`` (robot-only MJCF).
+        robot_xml_path: Absolute path to the robot-only MJCF.
         robot_start_xy: XY position reserved as a free-space seed node.
         seed: Deterministic seed for reproducible scenes.
         config: Optional generator overrides.
@@ -486,7 +486,7 @@ def build_procedural_spec(
     cfg = config or GeneratorConfig()
     rng = np.random.default_rng(seed)
 
-    spec = mujoco.MjSpec.from_file(lite3_xml_path)
+    spec = mujoco.MjSpec.from_file(robot_xml_path)
     worldbody = spec.worldbody
 
     _add_ground_plane(worldbody, cfg)

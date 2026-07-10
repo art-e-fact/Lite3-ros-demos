@@ -17,6 +17,7 @@ setup(
         ]),
         ('share/' + package_name + '/config', [
             'config/rail_follow_sim.yaml',
+            'config/rail_follow_sim_m20.yaml',
             'config/rail_follow_office_real.yaml',
             'config/rail_follow_office_real_auto.yaml',
             'config/rail_follow_office_real_push.yaml',

@@ -22,9 +22,23 @@ LEGACY_PACKAGE_NAME = "lite3_sdk_deploy"
 ASSETS_DIR_NAME = "assets"
 DEFAULT_SCENE_URI = "package://simulation_package/assets/lite3_mjcf/mjcf/stairs_floors.xml"
 DEFAULT_ROBOT_DESCRIPTION_URI = "package://simulation_package/assets/lite3_mjcf/mjcf/Lite3.xml"
+M20_ROBOT_DESCRIPTION_URI = "package://simulation_package/assets/m20_mjcf/mjcf/M20.xml"
 DEFAULT_USD_URI = "package://simulation_package/assets/Lite3_usd/Lite3.usd"
 PROCEDURAL_SCENE_PREFIX = "procedural://"
 SUPPORTED_PROCEDURAL_SCENES = {"blocks", "railroad"}
+
+ROBOT_PRESETS: dict[str, dict[str, str | float]] = {
+	"lite3": {
+		"name": "Lite3",
+		"robot_description": DEFAULT_ROBOT_DESCRIPTION_URI,
+		"base_height": 0.43,
+	},
+	"m20": {
+		"name": "M20",
+		"robot_description": M20_ROBOT_DESCRIPTION_URI,
+		"base_height": 1.0,
+	},
+}
 
 
 @dataclass
@@ -99,6 +113,34 @@ class Mid360Config:
 
 
 @dataclass
+class RobosenseUnitConfig:
+	site_name: str = "lidar_front_site"
+	frame_id: str = "lidar_front"
+	topic: str = "/lidar_front/points"
+
+
+@dataclass
+class RobosenseConfig:
+	enabled: bool = False
+	frequency_hz: float = 10.0
+	channels: int = 96
+	columns: int = 448
+	column_downsample: int = 8
+	v_fov_deg: list[float] = field(default_factory=lambda: [-45.0, 45.0])
+	range_min: float = 0.1
+	range_max: float = 30.0
+	enable_rear: bool = True
+	front: RobosenseUnitConfig = field(default_factory=RobosenseUnitConfig)
+	rear: RobosenseUnitConfig = field(
+		default_factory=lambda: RobosenseUnitConfig(
+			site_name="lidar_back_site",
+			frame_id="lidar_back",
+			topic="/lidar_back/points",
+		)
+	)
+
+
+@dataclass
 class FollowCameraConfig:
 	enabled: bool = False
 	video_path: str = ""
@@ -118,6 +160,7 @@ class SensorsConfig:
 	realsense: RealsenseConfig = field(default_factory=RealsenseConfig)
 	lidar_2d: Lidar2DConfig = field(default_factory=Lidar2DConfig)
 	mid360: Mid360Config = field(default_factory=Mid360Config)
+	robosense: RobosenseConfig = field(default_factory=RobosenseConfig)
 	follow_camera: FollowCameraConfig = field(default_factory=FollowCameraConfig)
 
 
@@ -130,8 +173,19 @@ class RerunConfig:
 
 @dataclass
 class RobotConfig:
+	model: str = "lite3"
 	robot_description: str = DEFAULT_ROBOT_DESCRIPTION_URI
 	state_frequency_hz: float = 50.0
+
+	def preset(self) -> dict[str, str | float]:
+		key = self.model.strip().lower()
+		if key not in ROBOT_PRESETS:
+			raise ValueError(f"Unknown robot.model '{self.model}', expected one of: {', '.join(sorted(ROBOT_PRESETS))}")
+		return ROBOT_PRESETS[key]
+
+	@property
+	def model_name(self) -> str:
+		return str(self.preset()["name"])
 
 
 @dataclass
@@ -153,12 +207,9 @@ class SimulationConfig:
 
 	@classmethod
 	def from_dict(cls, data: dict[str, Any] | None) -> "SimulationConfig":
-		if data is not None:
-			if "robot_description" in data:
-				robot_data = data.setdefault("robot", {})
-				if isinstance(robot_data, dict):
-					robot_data.setdefault("robot_description", data.pop("robot_description"))
 		config = _dataclass_from_dict(cls, data or {})
+		preset = config.robot.preset()
+		config.robot.robot_description = str(preset["robot_description"])
 		if config.headless and config.rerun.spawn:
 			return config.with_overrides({"rerun.spawn": False})
 		return config
@@ -191,6 +242,11 @@ class SimulationConfig:
 		simulator = self.simulator.lower()
 		if simulator not in {"newton", "mujoco"}:
 			errors.append("simulator must be 'newton' or 'mujoco'")
+
+		try:
+			self.robot.preset()
+		except ValueError as exc:
+			errors.append(str(exc))
 
 		scene_value = str(self.scene).strip()
 		procedural_scene = self.procedural_scene_name()
@@ -231,6 +287,17 @@ class SimulationConfig:
 		_validate_positive(errors, "sensors.mid360.samples_per_scan", sensors.mid360.samples_per_scan)
 		_validate_positive(errors, "sensors.mid360.downsample", sensors.mid360.downsample)
 		_validate_range(errors, "sensors.mid360", sensors.mid360.range_min, sensors.mid360.range_max)
+		if sensors.robosense.enabled and simulator != "mujoco":
+			errors.append("sensors.robosense is only supported by the MuJoCo simulator")
+		_validate_positive(errors, "sensors.robosense.frequency_hz", sensors.robosense.frequency_hz)
+		_validate_positive(errors, "sensors.robosense.channels", sensors.robosense.channels)
+		_validate_positive(errors, "sensors.robosense.columns", sensors.robosense.columns)
+		_validate_positive(errors, "sensors.robosense.column_downsample", sensors.robosense.column_downsample)
+		_validate_range(errors, "sensors.robosense", sensors.robosense.range_min, sensors.robosense.range_max)
+		if len(sensors.robosense.v_fov_deg) != 2:
+			errors.append("sensors.robosense.v_fov_deg must have exactly two elements [min, max]")
+		elif sensors.robosense.v_fov_deg[0] >= sensors.robosense.v_fov_deg[1]:
+			errors.append("sensors.robosense.v_fov_deg min must be less than max")
 		if sensors.follow_camera.enabled and simulator != "mujoco":
 			errors.append("sensors.follow_camera is only supported by the MuJoCo simulator")
 		if sensors.follow_camera.enabled and not str(sensors.follow_camera.video_path).strip():
@@ -332,6 +399,7 @@ def resolve_path(path_value: str | os.PathLike[str], must_exist: bool = False) -
 		for base in (
 			root,
 			root / "lite3_mjcf" / "mjcf",
+			root / "m20_mjcf" / "mjcf",
 			root / "Lite3_usd",
 			root / "realsense_d435i",
 			root / "mid360",

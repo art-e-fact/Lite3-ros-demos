@@ -74,6 +74,25 @@ sensors:
     range_max: 200.0
     downsample: 1
 
+  robosense:
+    enabled: false
+    frequency_hz: 10.0
+    channels: 96
+    columns: 448
+    column_downsample: 8
+    v_fov_deg: [-45.0, 45.0]
+    range_min: 0.1
+    range_max: 30.0
+    enable_rear: true
+    front:
+      site_name: lidar_front_site
+      frame_id: lidar_front
+      topic: /lidar_front/points
+    rear:
+      site_name: lidar_back_site
+      frame_id: lidar_back
+      topic: /lidar_back/points
+
   follow_camera:
     enabled: false
     video_path: ''
