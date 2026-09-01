@@ -1,0 +1,7 @@
+simulator: newton
+headless: false
+scene: package://simulation_package/assets/worlds/karuizawa/karuizawa.xml
+robot:
+  model: m20
+rerun:
+  enabled: false

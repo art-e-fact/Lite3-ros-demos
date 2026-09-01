@@ -128,6 +128,11 @@ cmd = "python -m simulation_package.start_simulation --config src/simulation_pac
 default-environment = "sim"
 depends-on = ["build"]
 
+[tasks.sim-newton-m20-karuizawa]
+cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/newton_karuizawa_m20.yaml"
+default-environment = "sim"
+depends-on = ["build"]
+
 [tasks.nav-rail-follow]
 cmd = "ros2 launch rail_inspector rail_target_follow.launch.py"
 default-environment = "nav"
