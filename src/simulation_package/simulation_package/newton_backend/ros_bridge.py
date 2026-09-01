@@ -7,21 +7,23 @@ from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from tf2_ros import TransformBroadcaster
 
-from simulation import DEFAULT_DAMPING, DEFAULT_JOINT_POS, DEFAULT_STIFFNESS, JointCommand, NUM_DOFS, quat_xyzw_to_rpy, rotate_world_to_body
+from simulation import DEFAULT_DAMPING, DEFAULT_STIFFNESS, ROBOT_PROFILES, JointCommand, RobotProfile, quat_xyzw_to_rpy, rotate_world_to_body
 
 
 class NewtonRosBridge:
-    def __init__(self, headless: bool, model_path: str):
+    def __init__(self, headless: bool, model_path: str, profile: RobotProfile | None = None):
         self.node = Node("newton_simulation")
         self.node.declare_parameter("headless", headless)
         self.node.declare_parameter("model_path", model_path)
         self._shutdown_requested = False
 
-        self.kp_cmd = np.full(NUM_DOFS, DEFAULT_STIFFNESS, dtype=np.float32)
-        self.kd_cmd = np.full(NUM_DOFS, DEFAULT_DAMPING, dtype=np.float32)
-        self.pos_cmd = DEFAULT_JOINT_POS.copy()
-        self.vel_cmd = np.zeros(NUM_DOFS, dtype=np.float32)
-        self.tau_ff = np.zeros(NUM_DOFS, dtype=np.float32)
+        self.profile = profile if profile is not None else ROBOT_PROFILES["Lite3"]
+        self.num_dofs = self.profile.num_dofs
+        self.kp_cmd = np.full(self.num_dofs, DEFAULT_STIFFNESS, dtype=np.float32)
+        self.kd_cmd = np.full(self.num_dofs, DEFAULT_DAMPING, dtype=np.float32)
+        self.pos_cmd = self.profile.default_joint_pos.copy()
+        self.vel_cmd = np.zeros(self.num_dofs, dtype=np.float32)
+        self.tau_ff = np.zeros(self.num_dofs, dtype=np.float32)
 
         self.imu_pub = self.node.create_publisher(ImuData, "/IMU_DATA", 200)
         self.joints_pub = self.node.create_publisher(JointsData, "/JOINTS_DATA", 200)
@@ -77,17 +79,18 @@ class NewtonRosBridge:
         joints_msg.header.stamp = stamp
         joints_msg.data = JointsDataValue()
         joints_msg.data.joints_data = [JointData() for _ in range(16)]
-        for index in range(NUM_DOFS):
+        pub_pos, pub_vel, pub_tau = self._raw_to_pub(state.joint_position, state.joint_velocity, last_tau)
+        for index in range(self.num_dofs):
             joint = joints_msg.data.joints_data[index]
             joint.name = [32, 32, 32, 32]
             joint.data_id = 0
             joint.status_word = 1
-            joint.position = float(state.joint_position[index])
-            joint.velocity = float(state.joint_velocity[index])
-            joint.torque = float(last_tau[index])
+            joint.position = float(pub_pos[index])
+            joint.velocity = float(pub_vel[index])
+            joint.torque = float(pub_tau[index])
             joint.motion_temp = 40.0
             joint.driver_temp = 45.0
-        for index in range(NUM_DOFS, 16):
+        for index in range(self.num_dofs, 16):
             joints_msg.data.joints_data[index].status_word = 1
         self.joints_pub.publish(joints_msg)
 
@@ -127,17 +130,32 @@ class NewtonRosBridge:
         self.odom_pub.publish(odom_msg)
 
     def _cmd_callback(self, msg: JointsDataCmd):
-        if len(msg.data.joints_data) not in (NUM_DOFS, 16):
+        if len(msg.data.joints_data) not in (self.num_dofs, 16):
             self.node.get_logger().warn("Received JointsDataCmd with incorrect number of joints")
             return
 
-        for index in range(NUM_DOFS):
+        pub_pos = np.zeros(self.num_dofs, dtype=np.float32)
+        pub_vel = np.zeros(self.num_dofs, dtype=np.float32)
+        for index in range(self.num_dofs):
             joint_cmd = msg.data.joints_data[index]
             self.kp_cmd[index] = joint_cmd.kp
             self.kd_cmd[index] = joint_cmd.kd
-            self.pos_cmd[index] = joint_cmd.position
-            self.vel_cmd[index] = joint_cmd.velocity
-            self.tau_ff[index] = joint_cmd.torque
+            pub_pos[index] = joint_cmd.position
+            pub_vel[index] = joint_cmd.velocity
+            self.tau_ff[index] = joint_cmd.torque  # tau_ff no processing, matches MuJoCo bridge
+
+        if self.profile.joint_dir is not None:
+            self.pos_cmd[:] = pub_pos * self.profile.joint_dir + self.profile.pos_offset_rad
+            self.vel_cmd[:] = pub_vel * self.profile.joint_dir
+        else:
+            self.pos_cmd[:] = pub_pos
+            self.vel_cmd[:] = pub_vel
+
+    def _raw_to_pub(self, q: np.ndarray, dq: np.ndarray, tau: np.ndarray):
+        if self.profile.joint_dir is None:
+            return q, dq, tau
+        direction = self.profile.joint_dir
+        return (q - self.profile.pos_offset_rad) * direction, dq * direction, tau * direction
 
     @staticmethod
     def _stamp(timestamp: float) -> Time:

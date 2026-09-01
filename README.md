@@ -100,3 +100,39 @@ The state of the UI is kept in the ROS parameter server so it's safe to relaunch
 
 Notes:
  - To sync the UI when nodes restart, click the `refresh` button
+
+
+## WIP
+
+
+### Run in Newton (GPU, experimental)
+The same robots can also run in Newton on a currently empty ground-plane.
+
+**Lite3:**
+```bash
+pixi run sim-newton
+```
+In separate terminals:
+```bash
+pixi run -e nav ros2 run lite3_sdk_deploy rl_deploy --twist
+pixi run -e nav ros2 run teleop_twist_keyboard teleop_twist_keyboard
+```
+
+**M20:**
+```bash
+pixi run sim-newton-m20
+```
+In separate terminals:
+```bash
+pixi run -e nav ros2 run m20_sdk_deploy rl_deploy --twist
+pixi run -e nav ros2 run teleop_twist_keyboard teleop_twist_keyboard
+```
+
+Notes:
+* On Linux with an NVIDIA GPU the CUDA build of Warp is used automatically (see `[feature.sim.system-requirements]` in `pixi.toml`).
+
+TODO with Newton:
+
+Procedural scenes
+Robosense lidar 
+Rail-follow demos and tests port

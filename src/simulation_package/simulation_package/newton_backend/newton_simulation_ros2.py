@@ -15,7 +15,7 @@ if str(SIMULATION_DIR) not in sys.path:
 import rclpy
 
 from ros_bridge import NewtonRosBridge
-from simulation import DT, ROS_SPIN_EVERY_STEPS, NewtonSimulation, create_newton_viewer
+from simulation import DT, ROS_SPIN_EVERY_STEPS, ROBOT_PROFILES, NewtonSimulation, create_newton_viewer
 from sensors.newton.sensor_manager import NewtonSensorManager, NewtonSensorOptions
 from simulation_config import SimulationConfig
 
@@ -53,8 +53,11 @@ def run_newton(config: SimulationConfig, ros_args: list[str] | None = None):
     rclpy.init(args=ros_args)
     model_path = config.resolved_robot_description()
     scene_path = config.resolved_scene()
+    profile = ROBOT_PROFILES.get(config.robot.model_name)
+    if profile is None:
+        raise SystemExit(f"No Newton robot profile for '{config.robot.model_name}'")
     viewer = None if config.headless else create_newton_viewer()
-    ros = NewtonRosBridge(headless=config.headless, model_path=model_path)
+    ros = NewtonRosBridge(headless=config.headless, model_path=model_path, profile=profile)
     sensor_options = NewtonSensorOptions(
         lidar_2d=config.sensors.lidar_2d,
         mid360=config.sensors.mid360,
@@ -67,6 +70,7 @@ def run_newton(config: SimulationConfig, ros_args: list[str] | None = None):
         viewer=viewer,
         logger=ros.get_logger(),
         sensor_options=sensor_options,
+        profile=profile,
     )
     sensors = NewtonSensorManager(sim.model, sim.state_0, ros.node, DT, sensor_options)
 

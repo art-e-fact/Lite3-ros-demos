@@ -118,6 +118,16 @@ cmd = "mjpython -m simulation_package.start_simulation --config src/simulation_p
 default-environment = "sim"
 depends-on = ["build"]
 
+[tasks.sim-newton]
+cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/newton_empty.yaml"
+default-environment = "sim"
+depends-on = ["build"]
+
+[tasks.sim-newton-m20]
+cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/newton_empty_m20.yaml"
+default-environment = "sim"
+depends-on = ["build"]
+
 [tasks.nav-rail-follow]
 cmd = "ros2 launch rail_inspector rail_target_follow.launch.py"
 default-environment = "nav"
@@ -169,6 +179,10 @@ channels = [
     "https://prefix.dev/conda-forge",
 ]
 
+# Declares the __cuda virtual package so the cuda warp-lang build is solvable.
+[feature.sim.system-requirements]
+cuda = "12"
+
 [feature.sim.activation]
 scripts = ["rosbuild/sim/install/setup.sh"]
 
@@ -178,7 +192,7 @@ scripts = ["rosbuild/sim/install/setup.sh"]
 LDFLAGS = "-L$CONDA_PREFIX/lib"
 
 [feature.sim.dependencies]
-newton-examples = ">=1.2.0,<2"
+newton-examples = ">=1.5.1,<2"
 mujoco = ">=3.8.1,<4"
 trimesh = ">=4.12.2,<5"
 imageio = ">=2.37.0,<3"
@@ -201,6 +215,10 @@ ros-kilted-tf2-ros-py = ">=0.41.6,<0.42"
 
 [feature.sim.pypi-dependencies]
 perlin-noise = ">=1.14, <2"
+
+# CUDA build of warp so Newton/mujoco-warp run on GPU (CPU build is picked otherwise).
+[feature.sim.target.linux-64.dependencies]
+warp-lang = { version = ">=1.17.0,<2", build = "cuda*" }
 
 [feature.rerun.pypi-dependencies]
 rerun-loader-mjcf = ">=1.0.1, <2"
