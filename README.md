@@ -135,5 +135,4 @@ Notes:
 
 TODOs with Newton:
  - Procedural scenes
- - Robosense lidar support
  - Rail-follow demos and tests port
