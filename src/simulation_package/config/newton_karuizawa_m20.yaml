@@ -3,5 +3,11 @@ headless: false
 scene: package://simulation_package/assets/worlds/karuizawa/karuizawa.xml
 robot:
   model: m20
+sensors:
+  robosense:
+    enabled: true
+    column_downsample: 1
+    channels: 48
+    columns: 224
 rerun:
   enabled: false

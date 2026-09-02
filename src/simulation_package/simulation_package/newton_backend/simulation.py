@@ -279,7 +279,9 @@ class NewtonSimulation:
             )
 
         self._init_sensor_visuals(builder)
-        builder.approximate_meshes("convex_hull")
+        # keep_visual_shapes: ray sensors (SensorTiledCamera) cast against render meshes,
+        # which plain convex-hulling would discard.
+        builder.approximate_meshes("convex_hull", keep_visual_shapes=True)
         if not scene_loaded:
             builder.add_ground_plane()
 

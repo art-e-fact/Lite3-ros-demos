@@ -62,6 +62,7 @@ def run_newton(config: SimulationConfig, ros_args: list[str] | None = None):
         lidar_2d=config.sensors.lidar_2d,
         mid360=config.sensors.mid360,
         realsense=config.sensors.realsense,
+        robosense=config.sensors.robosense,
     )
     sim = NewtonSimulation(
         model_path=model_path,
