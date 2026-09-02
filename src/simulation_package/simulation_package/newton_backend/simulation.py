@@ -28,6 +28,8 @@ DEFAULT_JOINT_POS = np.array(
 DEFAULT_STIFFNESS = 30.0
 DEFAULT_DAMPING = 1.0
 ARMATURE = 0.0
+# Each pyramidal condim=3 contact costs 4 rows in MuJoCo's constraint solver.
+CONSTRAINT_ROWS_PER_CONTACT = 4
 
 # M20 sim-to-policy frame, mirrors mujoco_simulation_ros2.py (DdsInterface::Handler).
 M20_JOINT_DIR = np.array(
@@ -154,8 +156,8 @@ class NewtonSimulation:
         self.tau_ff = np.zeros(self.num_dofs, dtype=np.float32)
         self.last_tau = np.zeros(self.num_dofs, dtype=np.float32)
 
-        self.model, self.solver, self.state_0, self.state_1, self.control = self._build_newton_model(model_path, scene_path)
-        self.contacts = self._create_contacts()
+        self.model, self.solver, self.collision_pipeline, self.state_0, self.state_1, self.control = self._build_newton_model(model_path, scene_path)
+        self.contacts = self.collision_pipeline.contacts()
         self.graph = None
         self.use_cuda_graph = False
         self._joint_f_buffer = np.zeros(BASE_DOF_COUNT + self.num_dofs, dtype=np.float32)
@@ -234,14 +236,6 @@ class NewtonSimulation:
             self.graph = None
             self.use_cuda_graph = False
             self._log_warn(f"CUDA graph capture failed; falling back to uncaptured Newton stepping: {exc}")
-
-    def _create_contacts(self):
-        try:
-            return newton.Contacts(self.solver.get_max_contact_count(), 0)
-        except Exception as exc:
-            self._log_debug(f"Newton contacts unavailable for viewer logging: {exc}")
-            return None
-
     def _build_newton_model(self, model_path: str, scene_path: str | None = None):
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Lite3 model description not found: {model_path}")
@@ -255,6 +249,7 @@ class NewtonSimulation:
         builder.default_shape_cfg.mu = 0.75
 
         scene_loaded = self._add_environment_scene(builder, scene_path, model_path)
+        scene_shape_count = builder.shape_count
 
         if Path(model_path).suffix.lower() == ".xml":
             builder.add_mjcf(
@@ -278,9 +273,13 @@ class NewtonSimulation:
             )
 
         self._init_sensor_visuals(builder)
+        # Hull robot meshes only. Environment meshes stay triangle colliders;
+        # convex-hulling a landscape wraps it in one blob.
         # keep_visual_shapes: ray sensors (SensorTiledCamera) cast against render meshes,
         # which plain convex-hulling would discard.
-        builder.approximate_meshes("convex_hull", keep_visual_shapes=True)
+        hull_indices = list(range(scene_shape_count, builder.shape_count))
+        if hull_indices:
+            builder.approximate_meshes("convex_hull", shape_indices=hull_indices, keep_visual_shapes=True)
         if not scene_loaded:
             builder.add_ground_plane()
 
@@ -298,7 +297,22 @@ class NewtonSimulation:
 
         model = builder.finalize()
         model.set_gravity((0.0, 0.0, -9.81))
-        solver = newton.solvers.SolverMuJoCo(model, use_mujoco_cpu=False, solver="newton", nconmax=300, njmax=1000)
+        # Newton generates the contacts (use_mujoco_contacts=False) so the environment stays a
+        # triangle collider. MuJoCo convexifies every mesh geom it collides itself, which turns a
+        # lidar landscape into a ~300-vertex blob no matter what approximate_meshes() did.
+        collision_pipeline = newton.CollisionPipeline(model)
+        # MuJoCo transfers only min(rigid_contact_max, naconmax) contacts per step, so sizing
+        # nconmax to the pipeline's own cap means a Newton contact can never be silently dropped.
+        nconmax = collision_pipeline.rigid_contact_max
+        njmax = CONSTRAINT_ROWS_PER_CONTACT * (nconmax + BASE_DOF_COUNT + self.num_dofs)
+        solver = newton.solvers.SolverMuJoCo(
+            model,
+            use_mujoco_cpu=False,
+            solver="newton",
+            use_mujoco_contacts=False,
+            nconmax=nconmax,
+            njmax=njmax,
+        )
         state_0 = model.state()
         state_1 = model.state()
         control = model.control()
@@ -306,7 +320,7 @@ class NewtonSimulation:
             raise RuntimeError("Newton Control.joint_f is unavailable; cannot apply joint torques")
         newton.eval_fk(model, state_0.joint_q, state_0.joint_qd, state_0)
         newton.eval_fk(model, state_1.joint_q, state_1.joint_qd, state_1)
-        return model, solver, state_0, state_1, control
+        return model, solver, collision_pipeline, state_0, state_1, control
 
     def _add_environment_scene(self, builder, scene_path: str | None, model_path: str) -> bool:
         if not scene_path:
@@ -345,13 +359,12 @@ class NewtonSimulation:
         self.state_0.clear_forces()
         if apply_viewer_forces and self.viewer is not None and hasattr(self.viewer, "apply_forces"):
             self.viewer.apply_forces(self.state_0)
-        self.solver.step(self.state_0, self.state_1, self.control, None, DT)
+        self.collision_pipeline.collide(self.state_0, self.contacts)
+        self.solver.step(self.state_0, self.state_1, self.control, self.contacts, DT)
         if keep_state_buffers:
             self.state_0.assign(self.state_1)
         else:
             self.state_0, self.state_1 = self.state_1, self.state_0
-        if self.contacts is not None:
-            self.solver.update_contacts(self.contacts, self.state_0)
 
     def _apply_control(self):
         joint_q = warp_to_numpy(self.state_0.joint_q, FLOATING_BASE_Q_SIZE + self.num_dofs)
