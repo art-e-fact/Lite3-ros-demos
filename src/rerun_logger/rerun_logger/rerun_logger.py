@@ -13,7 +13,44 @@ import rerun as rr  # pip install rerun-sdk
 
 from ament_index_python.packages import get_package_share_directory
 
-ROBOT_PATH = f"{get_package_share_directory('assets_package')}/deep_robotics_model/Lite3/Lite3_urdf/urdf/Lite3.urdf"
+_ASSETS = get_package_share_directory('assets_package')
+
+# M20 publishes JOINTS_DATA in the policy frame; decode raw = pub * dir + offset
+# (mirrors DdsInterface::Handler / the simulators' M20 calibration).
+_M20_JOINT_DIR = np.array(
+    [1, 1, -1, 1, 1, -1, 1, -1, -1, 1, -1, 1, -1, -1, 1, -1], dtype=np.float64
+)
+_M20_POS_OFFSET_RAD = (
+    np.array([-25, -131, 160, 0, 25, -131, 160, 0, -25, 131, -160, 0, 25, 131, -160, 0], dtype=np.float64)
+    / 180.0 * np.pi
+)
+
+ROBOT_PROFILES = {
+    "lite3": {
+        "urdf": f"{_ASSETS}/deep_robotics_model/Lite3/Lite3_urdf/urdf/Lite3.urdf",
+        "root_link": "TORSO",
+        "joint_order": [
+            "FL_HipX_joint", "FL_HipY_joint", "FL_Knee_joint",
+            "FR_HipX_joint", "FR_HipY_joint", "FR_Knee_joint",
+            "HL_HipX_joint", "HL_HipY_joint", "HL_Knee_joint",
+            "HR_HipX_joint", "HR_HipY_joint", "HR_Knee_joint",
+        ],
+        "joint_dir": None,
+        "pos_offset_rad": None,
+    },
+    "m20": {
+        "urdf": f"{_ASSETS}/deep_robotics_model/M20/M20_urdf/urdf/M20.urdf",
+        "root_link": "base_link",
+        "joint_order": [
+            "fl_hipx_joint", "fl_hipy_joint", "fl_knee_joint", "fl_wheel_joint",
+            "fr_hipx_joint", "fr_hipy_joint", "fr_knee_joint", "fr_wheel_joint",
+            "hl_hipx_joint", "hl_hipy_joint", "hl_knee_joint", "hl_wheel_joint",
+            "hr_hipx_joint", "hr_hipy_joint", "hr_knee_joint", "hr_wheel_joint",
+        ],
+        "joint_dir": _M20_JOINT_DIR,
+        "pos_offset_rad": _M20_POS_OFFSET_RAD,
+    },
+}
 
 import rclpy
 from numpy.lib.recfunctions import structured_to_unstructured
@@ -56,9 +93,10 @@ JOINT_STATE_NAME_TO_URDF = {
 
 
 class RerunSubscriber(Node):  # type: ignore[misc]
-    def __init__(self, *, log_heightmap: bool = False, static_heightmap: bool = False) -> None:
+    def __init__(self, *, robot: str = "lite3", log_heightmap: bool = False, static_heightmap: bool = False) -> None:
         super().__init__("rr_turtlebot")
         self._static_heightmap = static_heightmap
+        self.profile = ROBOT_PROFILES[robot]
 
         # Assorted helpers for data conversions
         self.subscribers: list[rclpy.Subscription] = []
@@ -79,28 +117,26 @@ class RerunSubscriber(Node):  # type: ignore[misc]
             PointCloud2,
             lambda msg: self.scan_callback(msg, entity_path="scan/lidar_back"),
         )
+        robot_path = self.profile["urdf"]
         rr.log_file_from_path(
-            file_path=ROBOT_PATH,
+            file_path=robot_path,
             entity_path_prefix="urdf",
             static=True,
         )
         rr.log("/urdf", rr.CoordinateFrame("base_link"), static=True)
-        rr.log(
-            "transforms",
-            rr.Transform3D(
-                child_frame="TORSO",
-                parent_frame="base_link",
-            ),
-            static=True,
-        )
+        root_link = self.profile["root_link"]
+        if root_link != "base_link":
+            rr.log(
+                "transforms",
+                rr.Transform3D(
+                    child_frame=root_link,
+                    parent_frame="base_link",
+                ),
+                static=True,
+            )
         rr.log("/", rr.CoordinateFrame("odom"), static=True)
-        self.urdf_tree = rr.urdf.UrdfTree.from_file_path(ROBOT_PATH, entity_path_prefix="urdf")
-        self.joint_name_to_index = {
-            'FL_HipX_joint': 0, 'FL_HipY_joint': 1, 'FL_Knee_joint': 2,
-            'FR_HipX_joint': 3, 'FR_HipY_joint': 4, 'FR_Knee_joint': 5,
-            'HL_HipX_joint': 6, 'HL_HipY_joint': 7, 'HL_Knee_joint': 8,
-            'HR_HipX_joint': 9, 'HR_HipY_joint': 10, 'HR_Knee_joint': 11
-        }
+        self.urdf_tree = rr.urdf.UrdfTree.from_file_path(robot_path, entity_path_prefix="urdf")
+        self.joint_name_to_index = {name: idx for idx, name in enumerate(self.profile["joint_order"])}
 
         self.log_frame_box(
             frame_name="odom",
@@ -228,7 +264,7 @@ class RerunSubscriber(Node):  # type: ignore[misc]
     def _log_joint_angles(self, angles_by_name: dict[str, float]) -> None:
         """Logs joint transforms to Rerun given a mapping of joint name -> angle (radians)."""
         for joint in self.urdf_tree.joints():
-            if joint.joint_type == "revolute" and joint.name in angles_by_name:
+            if joint.joint_type in ("revolute", "continuous") and joint.name in angles_by_name:
                 transform = joint.compute_transform(angles_by_name[joint.name], clamp=False)
                 rr.log("transforms", transform)
 
@@ -239,10 +275,16 @@ class RerunSubscriber(Node):  # type: ignore[misc]
         time = Time.from_msg(msg.header.stamp)
         rr.set_time("ros_time", timestamp=np.datetime64(time.nanoseconds, "ns"))
 
+        count = min(len(self.profile["joint_order"]), len(msg.data.joints_data))
+        positions = np.array([msg.data.joints_data[i].position for i in range(count)], dtype=np.float64)
+        direction = self.profile["joint_dir"]
+        if direction is not None:
+            positions = positions * direction[:count] + self.profile["pos_offset_rad"][:count]
+
         angles_by_name = {
-            name: msg.data.joints_data[idx].position
+            name: positions[idx]
             for name, idx in self.joint_name_to_index.items()
-            if idx < len(msg.data.joints_data)
+            if idx < count
         }
         self._log_joint_angles(angles_by_name)
 
@@ -264,6 +306,12 @@ class RerunSubscriber(Node):  # type: ignore[misc]
 def main() -> None:
     parser = argparse.ArgumentParser(description="Rerun logger for the Lite3 rail demo.")
     rr.script_add_args(parser)
+    parser.add_argument(
+        "--robot",
+        choices=sorted(ROBOT_PROFILES),
+        default="lite3",
+        help="Robot model to visualise (URDF + joint mapping).",
+    )
     parser.add_argument(
         "--log_heightmap",
         action="store_true",
@@ -288,6 +336,7 @@ def main() -> None:
     rclpy.init(args=unknownargs)
 
     rerun_subscriber = RerunSubscriber(
+        robot=args.robot,
         log_heightmap=args.log_heightmap,
         static_heightmap=args.use_static_heightmap,
     )
