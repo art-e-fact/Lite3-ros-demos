@@ -133,15 +133,25 @@ cmd = "python -m simulation_package.start_simulation --config src/simulation_pac
 default-environment = "sim"
 depends-on = ["build"]
 
+[tasks.sim-newton-m20-karuizawa-gpu]
+args = [
+  { "arg" = "part", "default" = "part1", "choices" = ["part1", "part2", "part3"] },
+]
+cmd = [
+    "python", "-m", "simulation_package.start_simulation", 
+    "--config", "src/simulation_package/config/newton_karuizawa_m20.yaml",
+    "--set", "scene=hf://datasets/Artefacts/quadruped-environments@72049b46346cf9d14dc81bc5739de61c1af62b9a/mjcf/karuizawa/{{ part }}/karuizawa_{{ part }}.xml"
+]
+
+default-environment = "sim-gpu"
+depends-on = ["build"]
+
 # GPU (CUDA warp) variants of the Newton tasks.
 [tasks.sim-newton-gpu]
 depends-on = [{ task = "sim-newton", environment = "sim-gpu" }]
 
 [tasks.sim-newton-m20-gpu]
 depends-on = [{ task = "sim-newton-m20", environment = "sim-gpu" }]
-
-[tasks.sim-newton-m20-karuizawa-gpu]
-depends-on = [{ task = "sim-newton-m20-karuizawa", environment = "sim-gpu" }]
 
 [tasks.nav-rail-follow]
 cmd = "ros2 launch rail_inspector rail_target_follow.launch.py"
@@ -223,6 +233,7 @@ ros-kilted-nav-msgs = ">=5.5.2,<6"
 ros-kilted-sensor-msgs = ">=5.5.2,<6"
 ros-kilted-tf2-ros = ">=0.41.6,<0.42"
 ros-kilted-tf2-ros-py = ">=0.41.6,<0.42"
+huggingface_hub = ">=1.29.0,<2"
 
 [feature.sim.pypi-dependencies]
 perlin-noise = ">=1.14, <2"

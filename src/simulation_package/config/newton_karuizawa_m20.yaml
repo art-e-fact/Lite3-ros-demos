@@ -1,6 +1,6 @@
 simulator: newton
 headless: false
-scene: package://simulation_package/assets/worlds/karuizawa/karuizawa.xml
+scene: ""
 robot:
   model: m20
 sensors:

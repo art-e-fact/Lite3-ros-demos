@@ -88,6 +88,10 @@ To visualize heightmaps
 ```bash
 pixi run rerun-logger --log_heightmap --use_static_heightmap
 ```
+Select the robot with
+```bash
+pixi run rerun-logger --robot m20
+```
 
 ## TUI Interface
 To launch the terminal user interface run:
@@ -100,6 +104,8 @@ The state of the UI is kept in the ROS parameter server so it's safe to relaunch
 
 Notes:
  - To sync the UI when nodes restart, click the `refresh` button
+
+
 
 
 ## WIP
@@ -129,6 +135,13 @@ In separate terminals:
 pixi run -e nav ros2 run m20_sdk_deploy rl_deploy --twist
 pixi run -e nav ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
+
+To use the Karuizawa world:
+```bash
+# part1, part2, part3 are available
+pixi run sim-newton-m20-karuizawa-gpu part1
+```
+Large assets are loaded on-demand. See [docs/remote_assets.md](docs/remote_assets.md) for more details.
 
 Notes:
 * GPU acceleration is opt-in via the `sim-gpu` environment (see `[feature.sim-cuda]` in `pixi.toml`); it requires an NVIDIA driver with CUDA 12.
