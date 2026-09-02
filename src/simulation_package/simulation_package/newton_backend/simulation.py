@@ -15,7 +15,6 @@ from sensors.newton.lidar_sensor import NewtonLidarSensor
 from sensors.newton.mid360_lidar_sensor import NewtonMid360LidarSensor
 
 
-NUM_DOFS = 12
 BASE_DOF_COUNT = 6
 FLOATING_BASE_Q_SIZE = 7
 DT = 0.004
