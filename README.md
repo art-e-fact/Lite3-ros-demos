@@ -105,8 +105,10 @@ Notes:
 ## WIP
 
 
-### Run in Newton (GPU, experimental)
+### Run in Newton (experimental)
 The same robots can also run in Newton on a currently empty ground-plane.
+
+By default tasks run in the `sim` environment with the CPU build of Warp, which works on any machine (including CI). On Linux with an NVIDIA GPU, use the `-gpu` task variants (e.g. `sim-newton-gpu`) to run in the `sim-gpu` environment with the CUDA build of Warp.
 
 **Lite3:**
 ```bash
@@ -129,7 +131,7 @@ pixi run -e nav ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
 
 Notes:
-* On Linux with an NVIDIA GPU the CUDA build of Warp is used automatically (see `[feature.sim.system-requirements]` in `pixi.toml`).
+* GPU acceleration is opt-in via the `sim-gpu` environment (see `[feature.sim-cuda]` in `pixi.toml`); it requires an NVIDIA driver with CUDA 12.
 
 TODO with Newton:
 
