@@ -15,7 +15,6 @@ from sensors.newton.lidar_sensor import NewtonLidarSensor
 from sensors.newton.mid360_lidar_sensor import NewtonMid360LidarSensor
 
 
-NUM_DOFS = 12
 BASE_DOF_COUNT = 6
 FLOATING_BASE_Q_SIZE = 7
 DT = 0.004
@@ -279,7 +278,9 @@ class NewtonSimulation:
             )
 
         self._init_sensor_visuals(builder)
-        builder.approximate_meshes("convex_hull")
+        # keep_visual_shapes: ray sensors (SensorTiledCamera) cast against render meshes,
+        # which plain convex-hulling would discard.
+        builder.approximate_meshes("convex_hull", keep_visual_shapes=True)
         if not scene_loaded:
             builder.add_ground_plane()
 

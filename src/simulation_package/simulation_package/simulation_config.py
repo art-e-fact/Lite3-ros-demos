@@ -287,8 +287,6 @@ class SimulationConfig:
 		_validate_positive(errors, "sensors.mid360.samples_per_scan", sensors.mid360.samples_per_scan)
 		_validate_positive(errors, "sensors.mid360.downsample", sensors.mid360.downsample)
 		_validate_range(errors, "sensors.mid360", sensors.mid360.range_min, sensors.mid360.range_max)
-		if sensors.robosense.enabled and simulator != "mujoco":
-			errors.append("sensors.robosense is only supported by the MuJoCo simulator")
 		_validate_positive(errors, "sensors.robosense.frequency_hz", sensors.robosense.frequency_hz)
 		_validate_positive(errors, "sensors.robosense.channels", sensors.robosense.channels)
 		_validate_positive(errors, "sensors.robosense.columns", sensors.robosense.columns)

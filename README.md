@@ -133,8 +133,6 @@ pixi run -e nav ros2 run teleop_twist_keyboard teleop_twist_keyboard
 Notes:
 * GPU acceleration is opt-in via the `sim-gpu` environment (see `[feature.sim-cuda]` in `pixi.toml`); it requires an NVIDIA driver with CUDA 12.
 
-TODO with Newton:
-
-Procedural scenes
-Robosense lidar 
-Rail-follow demos and tests port
+TODOs with Newton:
+ - Procedural scenes
+ - Rail-follow demos and tests port
