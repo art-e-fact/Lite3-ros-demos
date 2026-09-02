@@ -133,6 +133,16 @@ cmd = "python -m simulation_package.start_simulation --config src/simulation_pac
 default-environment = "sim"
 depends-on = ["build"]
 
+# GPU (CUDA warp) variants of the Newton tasks.
+[tasks.sim-newton-gpu]
+depends-on = [{ task = "sim-newton", environment = "sim-gpu" }]
+
+[tasks.sim-newton-m20-gpu]
+depends-on = [{ task = "sim-newton-m20", environment = "sim-gpu" }]
+
+[tasks.sim-newton-m20-karuizawa-gpu]
+depends-on = [{ task = "sim-newton-m20-karuizawa", environment = "sim-gpu" }]
+
 [tasks.nav-rail-follow]
 cmd = "ros2 launch rail_inspector rail_target_follow.launch.py"
 default-environment = "nav"
@@ -184,10 +194,6 @@ channels = [
     "https://prefix.dev/conda-forge",
 ]
 
-# Declares the __cuda virtual package so the cuda warp-lang build is solvable.
-[feature.sim.system-requirements]
-cuda = "12"
-
 [feature.sim.activation]
 scripts = ["rosbuild/sim/install/setup.sh"]
 
@@ -221,8 +227,12 @@ ros-kilted-tf2-ros-py = ">=0.41.6,<0.42"
 [feature.sim.pypi-dependencies]
 perlin-noise = ">=1.14, <2"
 
-# CUDA build of warp so Newton/mujoco-warp run on GPU (CPU build is picked otherwise).
-[feature.sim.target.linux-64.dependencies]
+# Opt-in GPU feature: requires an NVIDIA driver, so keep it out of the base sim
+# env (CI runners have no GPU). Declares __cuda so the cuda warp-lang build solves.
+[feature.sim-cuda.system-requirements]
+cuda = "12"
+
+[feature.sim-cuda.target.linux-64.dependencies]
 warp-lang = { version = ">=1.17.0,<2", build = "cuda*" }
 
 [feature.rerun.pypi-dependencies]
@@ -297,6 +307,7 @@ python = ">=3.14.5,<3.15"
 
 [environments]
 sim = ["sim", "rerun"]
+sim-gpu = ["sim", "sim-cuda", "rerun"]
 sim-test = ["sim", "test", "rerun"]
 nav = ["nav", "rerun"]
 nav-test = ["nav", "test", "rerun"]
