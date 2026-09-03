@@ -7,7 +7,7 @@ from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from tf2_ros import TransformBroadcaster
 
-from simulation import DEFAULT_DAMPING, DEFAULT_STIFFNESS, ROBOT_PROFILES, JointCommand, RobotProfile, quat_xyzw_to_rpy, rotate_world_to_body
+from simulation import DEFAULT_DAMPING, DEFAULT_STIFFNESS, ROBOT_PROFILES, JointCommand, RobotProfile, quat_xyzw_to_rpy
 
 
 class NewtonRosBridge:
@@ -55,7 +55,6 @@ class NewtonRosBridge:
     def publish_state(self, timestamp: float, state, last_tau: np.ndarray):
         stamp = self._stamp(timestamp)
         rpy_deg = np.degrees(quat_xyzw_to_rpy(state.quat_xyzw))
-        body_acc = rotate_world_to_body(state.quat_xyzw, np.array([0.0, 0.0, 9.81], dtype=np.float32))
 
         imu_msg = ImuData()
         imu_msg.header = MetaType()
@@ -65,12 +64,12 @@ class NewtonRosBridge:
         imu_msg.data.roll = float(rpy_deg[0])
         imu_msg.data.pitch = float(rpy_deg[1])
         imu_msg.data.yaw = float(rpy_deg[2])
-        imu_msg.data.omega_x = float(state.angvel_body[0])
-        imu_msg.data.omega_y = float(state.angvel_body[1])
-        imu_msg.data.omega_z = float(state.angvel_body[2])
-        imu_msg.data.acc_x = float(body_acc[0])
-        imu_msg.data.acc_y = float(body_acc[1])
-        imu_msg.data.acc_z = float(body_acc[2])
+        imu_msg.data.omega_x = float(state.imu_gyro[0])
+        imu_msg.data.omega_y = float(state.imu_gyro[1])
+        imu_msg.data.omega_z = float(state.imu_gyro[2])
+        imu_msg.data.acc_x = float(state.imu_acc[0])
+        imu_msg.data.acc_y = float(state.imu_acc[1])
+        imu_msg.data.acc_z = float(state.imu_acc[2])
         self.imu_pub.publish(imu_msg)
 
         joints_msg = JointsData()

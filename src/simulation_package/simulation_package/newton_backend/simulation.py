@@ -9,6 +9,7 @@ import newton
 import newton.examples
 import warp as wp
 from newton import JointTargetMode
+from newton.sensors import SensorIMU
 
 from sensors.newton.depth_sensor import NewtonDepthSensor
 from sensors.newton.lidar_sensor import NewtonLidarSensor
@@ -97,6 +98,9 @@ class SimulationState:
     angvel_body: np.ndarray
     joint_position: np.ndarray
     joint_velocity: np.ndarray
+    imu_acc: np.ndarray  # specific force at imu_site, sensor frame
+    imu_gyro: np.ndarray  # angular rate at imu_site, sensor frame
+
 
 def create_newton_viewer():
     parser = newton.examples.create_parser()
@@ -206,6 +210,7 @@ class NewtonSimulation:
         joint_q = warp_to_numpy(self.state_0.joint_q, FLOATING_BASE_Q_SIZE + self.num_dofs)
         joint_qd = warp_to_numpy(self.state_0.joint_qd, BASE_DOF_COUNT + self.num_dofs)
         quat_xyzw = joint_q[3:7]
+        self.imu.update(self.state_0)
         return SimulationState(
             position=joint_q[:3],
             quat_xyzw=quat_xyzw,
@@ -213,6 +218,9 @@ class NewtonSimulation:
             angvel_body=rotate_world_to_body(quat_xyzw, joint_qd[3:6]),
             joint_position=joint_q[FLOATING_BASE_Q_SIZE : FLOATING_BASE_Q_SIZE + self.num_dofs],
             joint_velocity=joint_qd[BASE_DOF_COUNT : BASE_DOF_COUNT + self.num_dofs],
+            # .numpy() aliases the sensor's persistent buffer on CPU devices, so copy out.
+            imu_acc=self.imu.accelerometer.numpy()[0].copy(),
+            imu_gyro=self.imu.gyroscope.numpy()[0].copy(),
         )
 
     def _setup_cuda_graph(self):
@@ -297,6 +305,9 @@ class NewtonSimulation:
 
         model = builder.finalize()
         model.set_gravity((0.0, 0.0, -9.81))
+        # Matches the MJCF's <accelerometer>/<gyro> on imu_site, which Newton's MJCF importer
+        # ignores. Must precede model.state(): the sensor requests the body_qdd state attribute.
+        self.imu = SensorIMU(model, sites="*imu_site")
         # Newton generates the contacts (use_mujoco_contacts=False) so the environment stays a
         # triangle collider. MuJoCo convexifies every mesh geom it collides itself, which turns a
         # lidar landscape into a ~300-vertex blob no matter what approximate_meshes() did.
