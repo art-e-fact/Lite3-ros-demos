@@ -16,7 +16,7 @@ from sensors.common.lidar import (
     RANGE_MIN,
     planar_lidar_dirs,
 )
-from sensors.common.transforms import make_transform, quat_from_matrix
+from sensors.common.transforms import make_transform, quat_from_matrix, sim_time_stamp
 from sensors.newton.geometry import camera_transforms, find_builder_shape_index, find_site_index, site_local_pose, site_world_pose
 from sensors.newton.ray_buffers import rays_from_dirs
 from simulation_config import Lidar2DConfig
@@ -101,7 +101,7 @@ class NewtonLidarSensor:
             )
 
         msg = LaserScan()
-        msg.header.stamp = self.node.get_clock().now().to_msg()
+        msg.header.stamp = sim_time_stamp(timestamp)
         msg.header.frame_id = self.config.frame_id
         msg.angle_min = -math.pi
         msg.angle_max = math.pi

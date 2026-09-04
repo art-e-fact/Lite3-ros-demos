@@ -150,14 +150,17 @@ class FollowCameraConfig:
 	enabled: bool = False
 	video_path: str = ""
 	fps: float = 20.0
-	width: int = 640
-	height: int = 480
+	width: int = 800
+	height: int = 600
 	distance_m: float = 4.0
 	elevation_deg: float = -18.0
 	azimuth_offset_deg: float = 60.0
 	target_height_m: float = 0.55
 	smoothing: float = 0.08
 	quality: int = 8
+	# Vertical field of view. MuJoCo's default free camera uses fovy=45, so both
+	# backends frame the robot identically at the same distance_m.
+	fov_deg: float = 45.0
 
 
 @dataclass
@@ -174,6 +177,10 @@ class RerunConfig:
 	enabled: bool = False
 	spawn: bool = True
 	save_path: str = ""
+	# Terminate the viewer process spawned by this simulator when the simulator exits.
+	# The viewer is spawned detached (own session), so process-group cleanup by a test
+	# harness cannot reach it; tests set this to true to avoid leaking viewer windows.
+	close_viewer_on_exit: bool = False
 
 
 @dataclass
@@ -257,8 +264,6 @@ class SimulationConfig:
 		procedural_scene = self.procedural_scene_name()
 		scene_path = None
 		if procedural_scene is not None:
-			if simulator != "mujoco":
-				errors.append("procedural scenes are only supported by the MuJoCo simulator")
 			if procedural_scene not in SUPPORTED_PROCEDURAL_SCENES:
 				supported = ", ".join(f"{PROCEDURAL_SCENE_PREFIX}{name}" for name in sorted(SUPPORTED_PROCEDURAL_SCENES))
 				errors.append(f"scene must be an MJCF/XML file or one of: {supported}")
@@ -301,8 +306,6 @@ class SimulationConfig:
 			errors.append("sensors.robosense.v_fov_deg must have exactly two elements [min, max]")
 		elif sensors.robosense.v_fov_deg[0] >= sensors.robosense.v_fov_deg[1]:
 			errors.append("sensors.robosense.v_fov_deg min must be less than max")
-		if sensors.follow_camera.enabled and simulator != "mujoco":
-			errors.append("sensors.follow_camera is only supported by the MuJoCo simulator")
 		if sensors.follow_camera.enabled and not str(sensors.follow_camera.video_path).strip():
 			errors.append("sensors.follow_camera.video_path must be set when follow camera recording is enabled")
 		_validate_positive(errors, "sensors.follow_camera.fps", sensors.follow_camera.fps)
@@ -311,10 +314,8 @@ class SimulationConfig:
 		_validate_positive(errors, "sensors.follow_camera.distance_m", sensors.follow_camera.distance_m)
 		_validate_positive(errors, "sensors.follow_camera.target_height_m", sensors.follow_camera.target_height_m)
 		_validate_positive(errors, "sensors.follow_camera.quality", sensors.follow_camera.quality)
+		_validate_positive(errors, "sensors.follow_camera.fov_deg", sensors.follow_camera.fov_deg)
 		_validate_unit_interval(errors, "sensors.follow_camera.smoothing", sensors.follow_camera.smoothing)
-
-		if self.rerun.enabled and simulator != "mujoco":
-			errors.append("rerun is only supported by the MuJoCo simulator")
 
 		return errors
 

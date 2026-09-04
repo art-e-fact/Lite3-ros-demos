@@ -10,6 +10,7 @@
 """
 
 import os
+import signal
 import time
 import argparse
 import math
@@ -84,6 +85,9 @@ def _build_static_spec(scene_path: str | None, robot_xml_path: str) -> mujoco.Mj
             pass
 DT = 0.001
 RENDER_INTERVAL = 50
+# gRPC port for a Rerun viewer this process spawns. Matches rerun's own default.
+RERUN_VIEWER_PORT = 9876
+RERUN_FLUSH_TIMEOUT_SEC = 10.0
 
 JOINT_INIT = {
     "Lite3": np.array([0, -1.35453, 2.54948,
@@ -257,6 +261,11 @@ class MuJoCoSimulationNode(Node):
         self.model.opt.timestep = DT
         self.data = mujoco.MjData(self.model)
         self.timestamp = 0.0
+        # Set on the first /JOINTS_CMD: the follow target's start_wait_sec is measured
+        # from here (controller-up), not from sim t=0, since how long the controller
+        # takes to connect and stand up depends on wall-clock time regardless of the
+        # simulator's realtime factor.
+        self.first_cmd_sim_time: float | None = None
         self.accel_sensor_adr = _find_accel_sensor_adr(self.model)
 
         self.actuator_ids = list(range(self.model.nu))
@@ -353,6 +362,8 @@ class MuJoCoSimulationNode(Node):
 
         self.rerun_enabled = config.rerun.enabled
         self.rerun_recorder = None
+        self.rerun_viewer_pid = None
+        self.rerun_close_viewer_on_exit = bool(config.rerun.close_viewer_on_exit)
         if self.rerun_enabled:
             import rerun as rr
             import rerun_loader_mjcf
@@ -360,7 +371,12 @@ class MuJoCoSimulationNode(Node):
             spawn = config.rerun.spawn and not config.headless
             self.get_logger().info(f"[INFO] Initializing Rerun (spawn={spawn}, save_path={config.rerun.save_path or 'None'})")
 
-            rr.init(f"{config.robot.model}_simulation", spawn=spawn)
+            # Spawn by hand rather than via rr.init(spawn=True): the viewer is detached
+            # into its own session, so a harness that kills our process group cannot
+            # reach it. _spawn_viewer returns the pid so shutdown can end it.
+            rr.init(f"{config.robot.model}_simulation", spawn=False)
+            if spawn:
+                self.rerun_viewer_pid = self._spawn_rerun_viewer()
             if config.rerun.save_path:
                 save_path = os.path.abspath(config.rerun.save_path)
                 os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -401,7 +417,12 @@ class MuJoCoSimulationNode(Node):
     def _update_scene(self, sim_time_s: float) -> bool:
         if self.scene_update is None:
             return False
-        changed = bool(self.scene_update(self.model, self.data, sim_time_s))
+        target_time = (
+            max(0.0, sim_time_s - self.first_cmd_sim_time)
+            if self.first_cmd_sim_time is not None
+            else 0.0
+        )
+        changed = bool(self.scene_update(self.model, self.data, target_time))
         if changed:
             mujoco.mj_forward(self.model, self.data)
         return changed
@@ -516,6 +537,13 @@ class MuJoCoSimulationNode(Node):
             self.get_logger().warn("Received JointsDataCmd with incorrect number of joints")
             return
 
+        if self.first_cmd_sim_time is None:
+            self.first_cmd_sim_time = self.timestamp
+            self.get_logger().info(
+                f"[INFO] First /JOINTS_CMD received at sim_time={self.timestamp:.3f}s; "
+                "starting follow-target wait clock"
+            )
+
         pub_pos = np.zeros(self.dof_num, dtype=np.float32)
         pub_vel = np.zeros(self.dof_num, dtype=np.float32)
         for i in range(self.dof_num):
@@ -592,6 +620,51 @@ class MuJoCoSimulationNode(Node):
                 except Exception as e:
                     self.get_logger().error(f"Failed to flush rerun recorder: {e}")
             self.follow_camera.close()
+            self._close_rerun_viewer()
+
+    def _spawn_rerun_viewer(self):
+        """Start a Rerun viewer and connect to it, returning its pid (None on failure)."""
+        import rerun as rr
+
+        try:
+            from rerun._spawn import _spawn_viewer
+        except ImportError as e:  # pragma: no cover - depends on the rerun-sdk build
+            self.get_logger().warn(f"[WARN] Cannot spawn the Rerun viewer ({e}); logging without one")
+            return None
+        try:
+            pid = _spawn_viewer(port=RERUN_VIEWER_PORT)
+            rr.connect_grpc(f"rerun+http://127.0.0.1:{RERUN_VIEWER_PORT}/proxy")
+        except Exception as e:
+            self.get_logger().warn(f"[WARN] Failed to spawn the Rerun viewer: {e}")
+            return None
+        self.get_logger().info(f"[INFO] Rerun viewer spawned (pid={pid}, port={RERUN_VIEWER_PORT})")
+        return pid
+
+    def _close_rerun_viewer(self):
+        """Stop the Rerun viewer this process spawned, when the config asks for it."""
+        if not self.rerun_enabled:
+            return
+        import rerun as rr
+
+        try:
+            rr.get_global_data_recording().flush(timeout_sec=RERUN_FLUSH_TIMEOUT_SEC)
+        except Exception as e:  # pragma: no cover - best effort
+            self.get_logger().warn(f"[WARN] Rerun flush failed: {e}")
+        if not self.rerun_close_viewer_on_exit or not self.rerun_viewer_pid:
+            return
+        pid = self.rerun_viewer_pid
+        self.rerun_viewer_pid = None
+        # _spawn_viewer starts a python wrapper whose child is the real rerun binary in
+        # the wrapper's own process group, so kill the group when we lead it.
+        try:
+            if os.getpgid(pid) == pid:
+                os.killpg(pid, signal.SIGTERM)
+            else:
+                os.kill(pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError, OSError) as e:
+            self.get_logger().warn(f"[WARN] Could not stop the Rerun viewer (pid={pid}): {e}")
+            return
+        self.get_logger().info(f"[INFO] Rerun viewer stopped (pid={pid})")
 
     def _apply_joint_torque(self):
         # 当前关节状态

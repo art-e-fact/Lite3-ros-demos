@@ -11,8 +11,8 @@ jobs:
           dockerfile: empty
     runtime:
       framework: other
-      simulator: mujoco
-      
+      simulator: newton
+
     scenarios:
       defaults:
         params:
@@ -23,7 +23,29 @@ jobs:
       settings:
         - name: test_sim_rail_target_follow_distance
           run: "pixi run -e nav-test test-rail-follow"
-  
+
+  test-rail-follow-mujoco:
+    type: test
+    timeout: 15 # minutes
+    package:
+      docker:
+        build:
+          dockerfile: empty
+    runtime:
+      framework: other
+      simulator: mujoco
+
+    scenarios:
+      defaults:
+        params:
+          headless: "true"
+          min_distance_to_travel: "7.5"
+          mid360_mount_pitch: ["0.0", "29.0", "30.0"]
+          mid360_mount_offset_x: "0.0"
+      settings:
+        - name: test_sim_rail_target_follow_distance
+          run: "pixi run -e nav-test test-rail-follow-mujoco"
+
   test-sim-sensors:
     type: test
     timeout: 5 # minutes
@@ -34,23 +56,23 @@ jobs:
     runtime:
       framework: other
       simulator: mujoco
-      
+
     scenarios:
       settings:
         - name: simulated_sensors_publishing_sensor_data
           run: "pixi run -e sim-test test-sim-sensors"
-  
+
   test-rerun-recording:
     type: test
-    timeout: 5 # minutes
+    timeout: 10 # minutes
     package:
       docker:
         build:
           dockerfile: empty
     runtime:
       framework: other
-      simulator: mujoco
-      
+      simulator: newton
+
     scenarios:
       defaults:
         params:
@@ -60,7 +82,7 @@ jobs:
         - name: rerun_recording
           run: "pixi run -e nav-test test-rerun-recording"
 
-  test-rerun-recording-m20:
+  test-rerun-recording-mujoco:
     type: test
     timeout: 5 # minutes
     package:
@@ -70,7 +92,27 @@ jobs:
     runtime:
       framework: other
       simulator: mujoco
-      
+
+    scenarios:
+      defaults:
+        params:
+          headless: "true"
+          min_distance_to_travel: "10.0"
+      settings:
+        - name: rerun_recording
+          run: "pixi run -e nav-test test-rerun-recording-mujoco"
+
+  test-rerun-recording-m20:
+    type: test
+    timeout: 10 # minutes
+    package:
+      docker:
+        build:
+          dockerfile: empty
+    runtime:
+      framework: other
+      simulator: newton
+
     scenarios:
       defaults:
         params:
@@ -79,3 +121,23 @@ jobs:
       settings:
         - name: rerun_recording_m20
           run: "pixi run -e nav-test test-rerun-recording-m20"
+
+  test-rerun-recording-m20-mujoco:
+    type: test
+    timeout: 5 # minutes
+    package:
+      docker:
+        build:
+          dockerfile: empty
+    runtime:
+      framework: other
+      simulator: mujoco
+
+    scenarios:
+      defaults:
+        params:
+          headless: "true"
+          min_distance_to_travel: "10.0"
+      settings:
+        - name: rerun_recording_m20
+          run: "pixi run -e nav-test test-rerun-recording-m20-mujoco"

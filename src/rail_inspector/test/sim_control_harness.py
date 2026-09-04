@@ -49,9 +49,82 @@ def _killpg(pgid: int, signum: int) -> None:
 def _cleanup_process_groups() -> None:
     for pgid in list(_PROCESS_GROUPS):
         _killpg(pgid, signal.SIGKILL)
+    if _INITIAL_RERUN_VIEWER_PIDS is not None:
+        _terminate_rerun_viewers(_rerun_viewer_pids() - _INITIAL_RERUN_VIEWER_PIDS)
 
 
 atexit.register(_cleanup_process_groups)
+
+
+# Rerun viewer cleanup
+VIEWER_STOP_TIMEOUT_SEC = 3.0
+_INITIAL_RERUN_VIEWER_PIDS: set[int] | None = None
+
+
+def _is_rerun_viewer_argv(argv: list[str]) -> bool:
+    if len(argv) < 2:
+        return False
+    if not any(arg == '--port' or arg.startswith('--port=') for arg in argv):
+        return False
+    return any(Path(arg).name == 'rerun' for arg in argv[:2])
+
+
+def _rerun_viewer_pids() -> set[int]:
+    """PIDs of running Rerun viewer processes (Linux via /proc, otherwise via ps)."""
+    pids: set[int] = set()
+    proc_dir = Path('/proc')
+    if proc_dir.is_dir():
+        for entry in proc_dir.iterdir():
+            if not entry.name.isdigit():
+                continue
+            try:
+                raw = (entry / 'cmdline').read_bytes()
+            except OSError:
+                continue
+            argv = [part.decode('utf-8', errors='replace') for part in raw.split(b'\0') if part]
+            if _is_rerun_viewer_argv(argv):
+                pids.add(int(entry.name))
+        return pids
+    try:
+        output = subprocess.run(
+            ['ps', '-axo', 'pid=,command='], capture_output=True, text=True, check=False
+        ).stdout
+    except OSError:
+        return pids
+    for line in output.splitlines():
+        parts = line.strip().split(None, 1)
+        if len(parts) == 2 and parts[0].isdigit() and _is_rerun_viewer_argv(parts[1].split()):
+            pids.add(int(parts[0]))
+    return pids
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _terminate_rerun_viewers(pids: set[int]) -> None:
+    if not pids:
+        return
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    deadline = time.monotonic() + VIEWER_STOP_TIMEOUT_SEC
+    while time.monotonic() < deadline and any(_pid_alive(pid) for pid in pids):
+        time.sleep(0.1)
+    for pid in pids:
+        if _pid_alive(pid):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
 
 
 def _tail(path: Path, lines: int = 80) -> str:
@@ -148,9 +221,17 @@ class SimControlHarness:
         odom_topic: str = '/odom',
         clock_topic: str = '/clock',
         max_odom_step_m: float = 1.0,
+        sim_pixi_env: str | None = None,
+        sim_ready_timeout_sec: float = 180.0,
     ):
-        """Initialise the harness; call ``start()`` or use as a context manager to run it."""
+        """Initialise the harness; call ``start()`` or use as a context manager to run it.
+
+        The control stack is launched only once the simulator publishes its first
+        ``/clock`` message (or after ``sim_ready_timeout_sec``), so the controller never
+        starts against a simulator that is still loading or JIT-compiling kernels.
+        """
         self._sim_config = sim_config
+        self._sim_ready_timeout_sec = sim_ready_timeout_sec
         self._config_path = Path(config_path)
         self._log_dir = Path(log_dir)
         self._repo_root = Path(repo_root)
@@ -161,6 +242,11 @@ class SimControlHarness:
         self._domain_id = (
             domain_id if domain_id is not None else str(200 + (os.getpid() % 30))
         )
+        self._sim_pixi_env = sim_pixi_env or subprocess.run(
+            ['scripts/sim_pixi_env.sh'],
+            cwd=str(self._repo_root),
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
         self._max_runtime_sec = max_runtime_sec
         self._sim_timeout_sec = sim_timeout_sec
         self._stall_timeout_sec = stall_timeout_sec
@@ -208,15 +294,33 @@ class SimControlHarness:
         os.environ['ROS_DOMAIN_ID'] = self._domain_id
         self._log_dir.mkdir(parents=True, exist_ok=True)
 
+        global _INITIAL_RERUN_VIEWER_PIDS
+        self._rerun_viewers_before = _rerun_viewer_pids()
+        if _INITIAL_RERUN_VIEWER_PIDS is None:
+            _INITIAL_RERUN_VIEWER_PIDS = set(self._rerun_viewers_before)
+
         pixi_exe = os.environ.get('PIXI_EXE', 'pixi')
         sim_pythonpath = os.pathsep.join(
             p for p in [str(self._sim_package_root), os.environ.get('PYTHONPATH', '')] if p
         )
-        sim_python = 'mjpython' if sys.platform == 'darwin' else 'python'
+        is_mujoco = self._sim_config.get('simulator') == 'mujoco'
+        sim_python = 'mjpython' if (is_mujoco and sys.platform == 'darwin') else 'python'
+        self._context = rclpy.context.Context()
+        rclpy.init(context=self._context)
+        self._node = rclpy.create_node('sim_control_harness', context=self._context)
+        self._node.get_logger().info(
+            f'Launching simulator with pixi env: {self._sim_pixi_env}'
+        )
+        self._executor = SingleThreadedExecutor(context=self._context)
+        self._executor.add_node(self._node)
+
+        self._node.create_subscription(Odometry, self._odom_topic, self._odom_callback, 20)
+        self._node.create_subscription(Clock, self._clock_topic, self._clock_callback, 10)
+
         self._sim_log_path = self._log_dir / 'sim.log'
         self._sim_proc, self._sim_log_file = _start_process(
             cmd=[
-                pixi_exe, 'run', '-e', 'sim',
+                pixi_exe, 'run', '-e', self._sim_pixi_env,
                 sim_python, '-m', 'simulation_package.start_simulation',
                 '--config', str(self._config_path),
             ],
@@ -225,6 +329,8 @@ class SimControlHarness:
             cwd=str(self._repo_root),
             extra_env={'PYTHONPATH': sim_pythonpath},
         )
+
+        self._wait_for_sim_ready()
 
         self._control_log_path = self._log_dir / 'control.log'
         self._control_proc, self._control_log_file = _start_process(
@@ -237,20 +343,31 @@ class SimControlHarness:
             cwd=str(self._repo_root),
         )
 
-        self._context = rclpy.context.Context()
-        rclpy.init(context=self._context)
-        self._node = rclpy.create_node('sim_control_harness', context=self._context)
-        self._executor = SingleThreadedExecutor(context=self._context)
-        self._executor.add_node(self._node)
-
-        self._node.create_subscription(Odometry, self._odom_topic, self._odom_callback, 20)
-        self._node.create_subscription(Clock, self._clock_topic, self._clock_callback, 10)
-
         self._wall_start = time.monotonic()
         self._spin_thread = threading.Thread(
             target=self._spin_loop, daemon=True, name='sim_control_harness_spin'
         )
         self._spin_thread.start()
+
+    def _wait_for_sim_ready(self) -> None:
+        """Spin until the simulator publishes ``/clock``, it exits, or the timeout elapses."""
+        started = time.monotonic()
+        deadline = started + self._sim_ready_timeout_sec
+        while time.monotonic() < deadline:
+            with self._lock:
+                if self._first_clock_sec is not None:
+                    self._node.get_logger().info(
+                        f'simulator ready after {time.monotonic() - started:.1f} s'
+                    )
+                    return
+            if self._sim_proc is not None and self._sim_proc.poll() is not None:
+                # Let the spin loop report SIM_EXITED with the log tail.
+                return
+            self._executor.spin_once(timeout_sec=0.1)
+        self._node.get_logger().warn(
+            f'no /clock from the simulator within {self._sim_ready_timeout_sec:.0f} s; '
+            'launching the control stack anyway'
+        )
 
     def _odom_callback(self, msg: Odometry) -> None:
         x = float(msg.pose.pose.position.x)
@@ -366,10 +483,13 @@ class SimControlHarness:
             self._node.destroy_node()
         if self._context is not None:
             rclpy.shutdown(context=self._context)
-        if self._control_proc is not None and self._control_log_file is not None:
-            _stop_process(self._control_proc, self._control_log_file)
+        # Simulator first: stopping the control stack first leaves the sim stepping an
+        # uncontrolled robot, and those frames land in the .rrd the assertions read.
         if self._sim_proc is not None and self._sim_log_file is not None:
             _stop_process(self._sim_proc, self._sim_log_file)
+        if self._control_proc is not None and self._control_log_file is not None:
+            _stop_process(self._control_proc, self._control_log_file)
+        self._close_spawned_rerun_viewers()
         if self._previous_domain_id is None:
             os.environ.pop('ROS_DOMAIN_ID', None)
         else:
@@ -391,6 +511,14 @@ class SimControlHarness:
                     _killpg(pgid, signal.SIGKILL)
             if log_file is not None:
                 log_file.close()
+        self._close_spawned_rerun_viewers()
+
+    def _close_spawned_rerun_viewers(self) -> None:
+        """Close Rerun viewers that appeared while this harness was running."""
+        before = getattr(self, '_rerun_viewers_before', None)
+        if before is None:
+            return
+        _terminate_rerun_viewers(_rerun_viewer_pids() - before)
 
     def __enter__(self) -> 'SimControlHarness':
         """Start the harness."""
