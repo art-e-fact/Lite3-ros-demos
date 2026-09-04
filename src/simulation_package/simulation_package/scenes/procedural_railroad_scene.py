@@ -457,21 +457,289 @@ def _extrude_profile(profile_mm, samples, z_offset: float = 0.0):
     return MeshData(verts, faces, _compute_vertex_normals(verts, faces))
 
 
+_RAIL_RGBA = (0.55, 0.55, 0.6, 1.0)
+_SLEEPER_RGBA = (0.4, 0.28, 0.18, 1.0)
+_TERRAIN_RGBA = (0.45, 0.38, 0.28, 1.0)
+_FOLLOW_TARGET_RGBA = (1.0, 0.5, 0.0, 0.5)
+_FOLLOW_TARGET_RADIUS = 0.17
+_FOLLOW_TARGET_HALF_HEIGHT = 0.9
+
+
+@dataclass
+class BoxGeom:
+    """A box collider/visual, yaw-rotated about world +Z.
+
+    Attributes:
+        name: Unique geom name.
+        pos: World position of the box centre.
+        half_size: Half-extents along the box's local x/y/z axes.
+        yaw: Rotation about +Z in radians.
+        rgba: Display colour.
+    """
+
+    name: str
+    pos: tuple[float, float, float]
+    half_size: tuple[float, float, float]
+    yaw: float = 0.0
+    rgba: tuple[float, float, float, float] = _SLEEPER_RGBA
+
+
+@dataclass
+class RailMeshGeom:
+    """One extruded rail string as a triangle mesh in world coordinates."""
+
+    name: str
+    vertices: np.ndarray  # (V, 3)
+    faces: np.ndarray  # (F, 3)
+    normals: np.ndarray  # (V, 3)
+    rgba: tuple[float, float, float, float] = _RAIL_RGBA
+
+
+@dataclass
+class TerrainGrid:
+    elevation: np.ndarray
+    x_min: float
+    x_max: float
+    y_min: float
+    y_max: float
+    rgba: tuple[float, float, float, float] = _TERRAIN_RGBA
+
+    @property
+    def nrow(self) -> int:
+        return int(self.elevation.shape[0])
+
+    @property
+    def ncol(self) -> int:
+        return int(self.elevation.shape[1])
+
+    @property
+    def center_xy(self) -> tuple[float, float]:
+        return (self.x_min + self.x_max) / 2.0, (self.y_min + self.y_max) / 2.0
+
+    @property
+    def half_extent_xy(self) -> tuple[float, float]:
+        return (self.x_max - self.x_min) / 2.0, (self.y_max - self.y_min) / 2.0
+
+    @property
+    def min_z(self) -> float:
+        return float(self.elevation.min())
+
+    @property
+    def max_z(self) -> float:
+        return float(self.elevation.max())
+
+    def height_at(self, x: float, y: float) -> float:
+        """Bilinearly sample the terrain height at (*x*, *y*), clamped to the grid."""
+        nrow, ncol = self.nrow, self.ncol
+        fx = (float(x) - self.x_min) / max(self.x_max - self.x_min, 1e-12) * (ncol - 1)
+        fy = (float(y) - self.y_min) / max(self.y_max - self.y_min, 1e-12) * (nrow - 1)
+        fx = float(np.clip(fx, 0.0, ncol - 1))
+        fy = float(np.clip(fy, 0.0, nrow - 1))
+        c0, r0 = int(math.floor(fx)), int(math.floor(fy))
+        c1, r1 = min(c0 + 1, ncol - 1), min(r0 + 1, nrow - 1)
+        tx, ty = fx - c0, fy - r0
+        e = self.elevation
+        top = e[r0, c0] * (1 - tx) + e[r0, c1] * tx
+        bottom = e[r1, c0] * (1 - tx) + e[r1, c1] * tx
+        return float(top * (1 - ty) + bottom * ty)
+
+
+class FollowTargetPath:
+    """Backend-neutral sampler for the follow target's motion along the mainline.
+
+    The target waits ``start_wait_sec`` seconds, then travels along the first road
+    at ``speed`` m/s starting ``start_distance`` metres in.
+    """
+
+    def __init__(
+        self,
+        road: list[tuple[float, float, float]],
+        start_distance: float,
+        speed: float,
+        start_wait_sec: float,
+        height: float = _FOLLOW_TARGET_HEIGHT,
+    ):
+        self._path = _build_road_path(road)
+        self.total_length = float(self._path[2][-1]) if len(self._path[2]) else 0.0
+        self.start_distance = float(np.clip(start_distance, 0.0, self.total_length))
+        self.speed = max(0.0, float(speed))
+        self.start_wait_sec = max(0.0, float(start_wait_sec))
+        self.height = float(height)
+
+    @property
+    def valid(self) -> bool:
+        return len(self._path[0]) > 0
+
+    def distance_at(self, sim_time_s: float) -> float:
+        travel_time = max(float(sim_time_s) - self.start_wait_sec, 0.0)
+        return min(self.start_distance + self.speed * travel_time, self.total_length)
+
+    def pose_at(self, sim_time_s: float) -> tuple[float, float, float, float]:
+        """Return ``(x, y, z, yaw)`` of the target centre at *sim_time_s*."""
+        x, y, yaw = _sample_road_path_pose(self._path, self.distance_at(sim_time_s))
+        return x, y, self.height, yaw
+
+
+@dataclass
+class FollowTargetGeom:
+    """The moving cylinder the rail-following stack chases."""
+
+    path: FollowTargetPath
+    name: str = _FOLLOW_TARGET_BODY_NAME
+    radius: float = _FOLLOW_TARGET_RADIUS
+    half_height: float = _FOLLOW_TARGET_HALF_HEIGHT
+    rgba: tuple[float, float, float, float] = _FOLLOW_TARGET_RGBA
+
+    def pose_at(self, sim_time_s: float) -> tuple[float, float, float, float]:
+        return self.path.pose_at(sim_time_s)
+
+
+@dataclass
+class RailroadSceneGeometry:
+    """Everything a physics backend needs to instantiate the railroad scene."""
+
+    rail_meshes: list[RailMeshGeom]
+    rail_colliders: list[BoxGeom]
+    sleepers: list[BoxGeom]
+    terrain: TerrainGrid | None
+    follow_target: FollowTargetGeom
+    mission_xy: list[list[float]]
+    robot_start_pose: tuple[float, float, float]
+    road_count: int
+    rail_base_z: float
+    rail_top_z: float
+
+    def target_pose_at(self, sim_time_s: float) -> tuple[float, float, float, float]:
+        """``(x, y, z, yaw)`` of the follow target at *sim_time_s*."""
+        return self.follow_target.pose_at(sim_time_s)
+
+
+def build_rail_scene_geometry(
+    net: RailNetwork,
+    terrain: TerrainSpec | None = None,
+    resolution: float = 0.2,
+    rng: np.random.Generator | None = None,
+    follow_target_start: float = 0.7,
+    follow_target_speed: float = 0.25,
+    follow_target_start_wait_sec: float = 7.0,
+) -> RailroadSceneGeometry:
+    """Turn a :class:`RailNetwork` into backend-neutral geometry.
+
+    Sleeper de-duplication and terrain noise both draw from *rng*, so passing a
+    seeded generator makes the whole scene reproducible (and identical between
+    the MuJoCo, Newton and Rerun views of it).
+    """
+    spec = net.spec
+    half_g = spec.gauge / 2.0
+    sl, sw, sh = net.sleeper_size
+    rail_z = sh / 2  # rails start at top of (half-buried) sleepers
+
+    # Rail cross-section half-extents for box colliders (mm → m)
+    rail_hw = abs(spec.profile[0][0]) * 0.001  # half base width
+    rail_hh = max(py for _, py in spec.profile) * 0.001 / 2  # half height
+
+    rail_meshes: list[RailMeshGeom] = []
+    rail_colliders: list[BoxGeom] = []
+    for si in range(len(net.roads)):
+        for tag, off in (("L", half_g), ("R", -half_g)):
+            samples = net.sample_string(si, offset=off, resolution=resolution)
+            if len(samples) < 2:
+                continue
+            mesh = _extrude_profile(spec.profile, samples, z_offset=rail_z)
+            name = f"rail_s{si}_{tag}"
+            rail_meshes.append(
+                RailMeshGeom(name=name, vertices=mesh.vertices, faces=mesh.faces, normals=mesh.normals)
+            )
+            for ji in range(len(samples) - 1):
+                p0, _ = samples[ji]
+                p1, _ = samples[ji + 1]
+                dx, dy = p1.x - p0.x, p1.y - p0.y
+                rail_colliders.append(
+                    BoxGeom(
+                        name=f"{name}_col{ji}",
+                        pos=((p0.x + p1.x) / 2, (p0.y + p1.y) / 2, rail_z + rail_hh),
+                        half_size=(math.hypot(dx, dy) / 2, rail_hw, rail_hh),
+                        yaw=math.atan2(dy, dx),
+                        rgba=_RAIL_RGBA,
+                    )
+                )
+
+    # Sleepers (deduplicated across all roads) — sunk halfway into ground
+    sleepers: list[BoxGeom] = []
+    for ti, (pos, quat) in enumerate(net.sample_sleepers(rng)):
+        fwd = quat * glm.vec3(1, 0, 0)
+        sleepers.append(
+            BoxGeom(
+                name=f"sleeper_{ti}",
+                pos=(float(pos.x), float(pos.y), 0.0),
+                half_size=(sl / 2, sw / 2, sh / 2),
+                yaw=math.atan2(float(fwd.y), float(fwd.x)),
+                rgba=_SLEEPER_RGBA,
+            )
+        )
+
+    terrain_grid = None
+    if terrain is not None:
+        elevation, (xmin, xmax, ymin, ymax) = net.generate_terrain(terrain, rng)
+        terrain_grid = TerrainGrid(
+            elevation=np.asarray(elevation, dtype=float),
+            x_min=float(xmin),
+            x_max=float(xmax),
+            y_min=float(ymin),
+            y_max=float(ymax),
+        )
+
+    mainline = net.roads[0] if net.roads else []
+    follow_target = FollowTargetGeom(
+        path=FollowTargetPath(
+            mainline,
+            start_distance=follow_target_start,
+            speed=follow_target_speed,
+            start_wait_sec=follow_target_start_wait_sec,
+        )
+    )
+    start_x, start_y = (mainline[0][0], mainline[0][1]) if mainline else (0.0, 0.0)
+    return RailroadSceneGeometry(
+        rail_meshes=rail_meshes,
+        rail_colliders=rail_colliders,
+        sleepers=sleepers,
+        terrain=terrain_grid,
+        follow_target=follow_target,
+        mission_xy=_build_mainline_mission_xy(net),
+        robot_start_pose=(float(start_x), float(start_y), math.radians(_extract_yaw_deg(mainline))),
+        road_count=len(net.roads),
+        rail_base_z=rail_z,
+        rail_top_z=rail_z + 2.0 * rail_hh,
+    )
+
+
 # --- Output ---
 
 
+def _rgba_str(rgba) -> str:
+    return " ".join(f"{float(v):g}" for v in rgba)
+
+
 def generate_mujoco_xml(
-    net: RailNetwork, resolution: float = 0.2, terrain: TerrainSpec | None = None
+    net: RailNetwork | None = None,
+    resolution: float = 0.2,
+    terrain: TerrainSpec | None = None,
+    *,
+    geometry: RailroadSceneGeometry | None = None,
 ) -> str:
     """Generate MuJoCo MJCF XML with inline rail meshes and optional terrain hfield."""
-    spec = net.spec
+    if geometry is None:
+        if net is None:
+            raise ValueError("generate_mujoco_xml() needs either a RailNetwork or a RailroadSceneGeometry")
+        geometry = build_rail_scene_geometry(net, terrain=terrain, resolution=resolution)
+
     root = Element("mujoco", model="rail_network")
     asset = SubElement(root, "asset")
     SubElement(
         asset,
         "material",
         name="mat_rail",
-        rgba="0.55 0.55 0.6 1",
+        rgba=_rgba_str(_RAIL_RGBA),
         specular="0.8",
         shininess="0.9",
     )
@@ -479,99 +747,73 @@ def generate_mujoco_xml(
         asset,
         "material",
         name="mat_sleeper",
-        rgba="0.4 0.28 0.18 1",
+        rgba=_rgba_str(_SLEEPER_RGBA),
         specular="0.2",
         shininess="0.1",
     )
     worldbody = SubElement(root, "worldbody")
-    half_g = spec.gauge / 2.0
-    _sl, _sw, sh = net.sleeper_size
-    rail_z = sh / 2  # rails start at top of (half-buried) sleepers
 
-    # Rail cross-section half-extents for box colliders (mm → m)
-    rail_hw = spec.profile[0][0] * 0.001  # half base width (negative, take abs)
-    rail_hw = abs(rail_hw)
-    rail_hh = max(py for _, py in spec.profile) * 0.001 / 2  # half height
-
-    for si in range(len(net.roads)):
-        for tag, off in [("L", half_g), ("R", -half_g)]:
-            samples = net.sample_string(si, offset=off, resolution=resolution)
-            if len(samples) < 2:
-                continue
-            mesh = _extrude_profile(spec.profile, samples, z_offset=rail_z)
-            name = f"rail_s{si}_{tag}"
-            SubElement(
-                asset,
-                "mesh",
-                name=name,
-                vertex=" ".join(f"{v:.6f}" for v in mesh.vertices.ravel()),
-                face=" ".join(str(i) for i in mesh.faces.ravel()),
-            )
-            # Visual only — convex-hull collision won't work for long rails
-            SubElement(
-                worldbody,
-                "geom",
-                name=name,
-                type="mesh",
-                mesh=name,
-                material="mat_rail",
-                contype="0",
-                conaffinity="0",
-            )
-            # Box colliders along the rail for accurate collision
-            for ji in range(len(samples) - 1):
-                p0, _ = samples[ji]
-                p1, _ = samples[ji + 1]
-                mx = (p0.x + p1.x) / 2
-                my = (p0.y + p1.y) / 2
-                mz = rail_z + rail_hh
-                dx, dy = p1.x - p0.x, p1.y - p0.y
-                half_len = math.sqrt(dx * dx + dy * dy) / 2
-                yaw = math.atan2(dy, dx)
-                SubElement(
-                    worldbody,
-                    "geom",
-                    name=f"{name}_col{ji}",
-                    type="box",
-                    size=f"{half_len:.4f} {rail_hw:.4f} {rail_hh:.4f}",
-                    pos=f"{mx:.4f} {my:.4f} {mz:.4f}",
-                    euler=f"0 0 {yaw:.6f}",
-                    contype="1",
-                    conaffinity="1",
-                    group="3",
-                )
-
-    # Sleepers (deduplicated across all roads) — sunk halfway into ground
-    sl, sw, _sh = net.sleeper_size
-    for ti, (pos, quat) in enumerate(net.sample_sleepers()):
-        fwd = quat * glm.vec3(1, 0, 0)
-        yaw = math.atan2(float(fwd.y), float(fwd.x))
+    for rail in geometry.rail_meshes:
+        SubElement(
+            asset,
+            "mesh",
+            name=rail.name,
+            vertex=" ".join(f"{v:.6f}" for v in rail.vertices.ravel()),
+            face=" ".join(str(i) for i in rail.faces.ravel()),
+        )
+        # Visual only — convex-hull collision won't work for long rails
         SubElement(
             worldbody,
             "geom",
-            name=f"sleeper_{ti}",
+            name=rail.name,
+            type="mesh",
+            mesh=rail.name,
+            material="mat_rail",
+            contype="0",
+            conaffinity="0",
+        )
+
+    # Box colliders along the rails for accurate collision
+    for box in geometry.rail_colliders:
+        SubElement(
+            worldbody,
+            "geom",
+            name=box.name,
             type="box",
-            size=f"{sl / 2:.4f} {sw / 2:.4f} {sh / 2:.4f}",
-            pos=f"{pos.x:.4f} {pos.y:.4f} {0:.4f}",
-            euler=f"0 0 {yaw:.6f}",
+            size=f"{box.half_size[0]:.4f} {box.half_size[1]:.4f} {box.half_size[2]:.4f}",
+            pos=f"{box.pos[0]:.4f} {box.pos[1]:.4f} {box.pos[2]:.4f}",
+            euler=f"0 0 {box.yaw:.6f}",
+            contype="1",
+            conaffinity="1",
+            group="3",
+        )
+
+    for box in geometry.sleepers:
+        SubElement(
+            worldbody,
+            "geom",
+            name=box.name,
+            type="box",
+            size=f"{box.half_size[0]:.4f} {box.half_size[1]:.4f} {box.half_size[2]:.4f}",
+            pos=f"{box.pos[0]:.4f} {box.pos[1]:.4f} {box.pos[2]:.4f}",
+            euler=f"0 0 {box.yaw:.6f}",
             material="mat_sleeper",
             contype="1",
             conaffinity="1",
         )
 
     # Terrain heightfield
-    if terrain is not None:
-        elevation, (xmin, xmax, ymin, ymax) = net.generate_terrain(terrain)
-        nrow, ncol = elevation.shape
-        e_min, e_max = float(elevation.min()), float(elevation.max())
+    grid = geometry.terrain
+    if grid is not None:
+        e_min, e_max = grid.min_z, grid.max_z
         e_range = max(e_max - e_min, 1e-6)
-        rx, ry = (xmax - xmin) / 2, (ymax - ymin) / 2
-        cx, cy = (xmin + xmax) / 2, (ymin + ymax) / 2
+        rx, ry = grid.half_extent_xy
+        cx, cy = grid.center_xy
         SubElement(
             asset,
             "material",
             name="mat_terrain",
-            rgba="0.45 0.38 0.28 1",
+            rgba=_rgba_str(_TERRAIN_RGBA),
             specular="0.1",
             shininess="0.1",
         )
@@ -579,10 +821,11 @@ def generate_mujoco_xml(
             asset,
             "hfield",
             name="terrain",
-            nrow=str(nrow),
-            ncol=str(ncol),
+            nrow=str(grid.nrow),
+            ncol=str(grid.ncol),
             size=f"{rx:.4f} {ry:.4f} {e_range:.4f} 0.5",
-            elevation=" ".join(f"{v:.4f}" for v in elevation[::-1].ravel()),
+            # MuJoCo's first hfield row is at +Y; TerrainGrid's is at -Y.
+            elevation=" ".join(f"{v:.4f}" for v in grid.elevation[::-1].ravel()),
         )
         SubElement(
             worldbody,
@@ -600,13 +843,17 @@ def generate_mujoco_xml(
     return tostring(root, encoding="unicode")
 
 
-def log_network(net: RailNetwork, terrain: TerrainSpec | None = None):
+def log_network(
+    net: RailNetwork,
+    terrain: TerrainSpec | None = None,
+    *,
+    geometry: RailroadSceneGeometry | None = None,
+):
     """Log the rail network to Rerun: centerlines, meshes, and optional terrain."""
     import rerun as rr
 
-    spec = net.spec
-    half_g = spec.gauge / 2.0
-    sl, sw, sh = net.sleeper_size
+    if geometry is None:
+        geometry = build_rail_scene_geometry(net, terrain=terrain)
 
     for si in range(len(net.roads)):
         samples = net.sample_string(si, resolution=0.2)
@@ -618,34 +865,27 @@ def log_network(net: RailNetwork, terrain: TerrainSpec | None = None):
                 static=True,
             )
 
-        for tag, off in [("L", half_g), ("R", -half_g)]:
-            samples = net.sample_string(si, offset=off, resolution=0.2)
-            if len(samples) < 2:
-                continue
-            mesh = _extrude_profile(spec.profile, samples, z_offset=sh / 2)
-            rr.log(
-                f"network/{si}/mesh_{tag}",
-                rr.Mesh3D(
-                    vertex_positions=mesh.vertices,
-                    triangle_indices=mesh.faces,
-                    vertex_normals=mesh.normals,
-                    vertex_colors=[140, 140, 155],
-                ),
-                static=True,
-            )
+    for rail in geometry.rail_meshes:
+        rr.log(
+            f"network/mesh_{rail.name}",
+            rr.Mesh3D(
+                vertex_positions=rail.vertices,
+                triangle_indices=rail.faces,
+                vertex_normals=rail.normals,
+                vertex_colors=[140, 140, 155],
+            ),
+            static=True,
+        )
 
     # Sleepers (deduplicated across all roads) — sunk halfway into ground
-    sleepers = net.sample_sleepers()
-    if sleepers:
+    if geometry.sleepers:
         centers = []
         half_sizes = []
         rotations = []
-        for pos, quat in sleepers:
-            fwd = quat * glm.vec3(1, 0, 0)
-            yaw = math.atan2(float(fwd.y), float(fwd.x))
-            centers.append([pos.x, pos.y, 0.0])
-            half_sizes.append([sl / 2, sw / 2, sh / 2])
-            q = glm.angleAxis(yaw, glm.vec3(0, 0, 1))
+        for box in geometry.sleepers:
+            centers.append(list(box.pos))
+            half_sizes.append(list(box.half_size))
+            q = glm.angleAxis(box.yaw, glm.vec3(0, 0, 1))
             rotations.append(rr.Quaternion(xyzw=[q.x, q.y, q.z, q.w]))
         rr.log(
             "network/sleepers",
@@ -660,9 +900,8 @@ def log_network(net: RailNetwork, terrain: TerrainSpec | None = None):
         )
 
     # Mission waypoints
-    mission_xy = _build_mainline_mission_xy(net)
-    if mission_xy:
-        mission_pts = np.array([[xy[0], xy[1], sh / 2 + 0.05] for xy in mission_xy])
+    if geometry.mission_xy:
+        mission_pts = np.array([[xy[0], xy[1], geometry.rail_base_z + 0.05] for xy in geometry.mission_xy])
         rr.log(
             "network/mission_waypoints",
             rr.Points3D(
@@ -674,13 +913,13 @@ def log_network(net: RailNetwork, terrain: TerrainSpec | None = None):
         )
 
     # Terrain mesh
-    if terrain is not None:
-        elevation, (xmin, xmax, ymin, ymax) = net.generate_terrain(terrain)
-        nrow, ncol = elevation.shape
-        xs = np.linspace(xmin, xmax, ncol)
-        ys = np.linspace(ymin, ymax, nrow)
+    grid = geometry.terrain
+    if grid is not None:
+        nrow, ncol = grid.nrow, grid.ncol
+        xs = np.linspace(grid.x_min, grid.x_max, ncol)
+        ys = np.linspace(grid.y_min, grid.y_max, nrow)
         gx, gy = np.meshgrid(xs, ys)
-        verts = np.column_stack([gx.ravel(), gy.ravel(), elevation.ravel()])
+        verts = np.column_stack([gx.ravel(), gy.ravel(), grid.elevation.ravel()])
         i = (np.arange(nrow - 1)[:, None] * ncol + np.arange(ncol - 1)[None, :]).ravel()
         faces = np.vstack(
             [
@@ -755,29 +994,14 @@ def _sample_road_path_pose(
 
 
 def _make_follow_target_updater(
-    net: RailNetwork,
-    start_distance: float,
-    speed: float,
-    start_wait_sec: float,
-    body_name: str = _FOLLOW_TARGET_BODY_NAME,
-    height: float = _FOLLOW_TARGET_HEIGHT,
-) -> tuple[
-    Callable[[mujoco.MjModel, mujoco.MjData, float], bool] | None,
-    float,
-    float,
-    float,
-    float,
-]:
-    mainline = net.roads[0] if net.roads else []
-    path = _build_road_path(mainline)
-    total_length = float(path[2][-1]) if len(path[2]) else 0.0
-    clamped_start = float(np.clip(start_distance, 0.0, total_length))
-    follow_speed = max(0.0, float(speed))
-    wait_sec = max(0.0, float(start_wait_sec))
+    follow_target: FollowTargetGeom,
+) -> Callable[[mujoco.MjModel, mujoco.MjData, float], bool] | None:
+    """Wrap the backend-neutral target path as a MuJoCo mocap-body updater."""
+    path = follow_target.path
+    if not path.valid:
+        return None
 
-    if len(path[0]) == 0:
-        return None, total_length, clamped_start, follow_speed, wait_sec
-
+    body_name = follow_target.name
     state = {"mocap_id": None, "last_distance": None}
 
     def update_scene(model: mujoco.MjModel, data: mujoco.MjData, sim_time_s: float) -> bool:
@@ -791,26 +1015,24 @@ def _make_follow_target_updater(
                 return False
             state["mocap_id"] = mocap_id
 
-        travel_time = max(float(sim_time_s) - wait_sec, 0.0)
-        distance = min(clamped_start + follow_speed * travel_time, total_length)
+        distance = path.distance_at(sim_time_s)
         if state["last_distance"] is not None and math.isclose(
             distance, state["last_distance"], rel_tol=0.0, abs_tol=1e-9
         ):
             return False
 
-        x, y, yaw = _sample_road_path_pose(path, distance)
-        data.mocap_pos[mocap_id] = [x, y, height]
+        x, y, z, yaw = follow_target.pose_at(sim_time_s)
+        data.mocap_pos[mocap_id] = [x, y, z]
         data.mocap_quat[mocap_id] = [math.cos(yaw / 2.0), 0.0, 0.0, math.sin(yaw / 2.0)]
         state["last_distance"] = distance
         return True
 
-    return update_scene, total_length, clamped_start, follow_speed, wait_sec
+    return update_scene
 
 
 def _build_railroad_scene_xml(
-    net: RailNetwork,
+    geometry: RailroadSceneGeometry,
     robot_xml_path: str,
-    terrain: TerrainSpec | None = None,
 ) -> str:
     root = Element("mujoco", model="rail scene")
     SubElement(root, "include", file=robot_xml_path)
@@ -879,18 +1101,19 @@ def _build_railroad_scene_xml(
         xyaxes="1 0 0 0 0.447 0.894",
     )
 
-    marker = SubElement(worldbody, "body", name="uwb_tag", mocap="true")
+    target = geometry.follow_target
+    marker = SubElement(worldbody, "body", name=target.name, mocap="true")
     SubElement(
         marker,
         "geom",
         type="cylinder",
-        size="0.17 0.9",
-        rgba="1.0 0.5 0.0 0.5",
+        size=f"{target.radius:g} {target.half_height:g}",
+        rgba=_rgba_str(target.rgba),
         contype="0",
         conaffinity="0",
     )
 
-    if terrain is None:
+    if geometry.terrain is None:
         SubElement(
             worldbody,
             "geom",
@@ -900,7 +1123,7 @@ def _build_railroad_scene_xml(
             material="groundplane",
         )
 
-    rail_root = fromstring(generate_mujoco_xml(net, terrain=terrain))
+    rail_root = fromstring(generate_mujoco_xml(geometry=geometry))
     rail_asset = rail_root.find("asset")
     rail_worldbody = rail_root.find("worldbody")
     if rail_asset is not None:
@@ -914,6 +1137,56 @@ def _build_railroad_scene_xml(
     return tostring(root, encoding="unicode")
 
 
+def build_railroad_scene(
+    seed: int,
+    n_roads: int = 1,
+    terrain: TerrainSpec | None | object = _TERRAIN_DEFAULT,
+    resolution: float = 0.2,
+    follow_target_start: float = 0.7,
+    follow_target_speed: float = 0.25,
+    follow_target_start_wait_sec: float = 7.0,
+    **builder_kwargs,
+) -> "RailwayScene":
+    """Build the railroad scene and its backend-neutral geometry from *seed*.
+
+    This is the engine-independent entry point: MuJoCo goes on through
+    :func:`build_railroad_spec`, Newton consumes ``scene.geometry`` directly.
+    """
+    rng = np.random.default_rng(seed)
+    scene = RailwayScene.build(
+        rng,
+        n_roads=n_roads,
+        terrain=terrain,
+        **builder_kwargs,
+    )
+    scene.seed = seed
+    scene.build_geometry(
+        rng,
+        resolution=resolution,
+        follow_target_start=follow_target_start,
+        follow_target_speed=follow_target_speed,
+        follow_target_start_wait_sec=follow_target_start_wait_sec,
+    )
+    return scene
+
+
+def railroad_scene_meta(scene: "RailwayScene") -> dict:
+    """Common ``scene_meta`` payload shared by the MuJoCo and Newton runners."""
+    geometry = scene.geometry
+    path = geometry.follow_target.path
+    return {
+        "seed": scene.seed,
+        "roads": geometry.road_count,
+        "mission_xy": geometry.mission_xy,
+        "robot_start_pose": list(geometry.robot_start_pose),
+        "mainline_length": path.total_length,
+        "follow_target_start": path.start_distance,
+        "follow_target_speed": path.speed,
+        "follow_target_start_wait_sec": path.start_wait_sec,
+        "railway_scene": scene,
+    }
+
+
 def build_railroad_spec(
     robot_xml_path: str,
     seed: int,
@@ -924,18 +1197,16 @@ def build_railroad_spec(
     follow_target_start_wait_sec: float = 7.0,
     **builder_kwargs,
 ) -> tuple[mujoco.MjSpec, dict]:
-    rng = np.random.default_rng(seed)
-    scene = RailwayScene.build(
-        rng,
+    scene = build_railroad_scene(
+        seed,
         n_roads=n_roads,
         terrain=terrain,
+        follow_target_start=follow_target_start,
+        follow_target_speed=follow_target_speed,
+        follow_target_start_wait_sec=follow_target_start_wait_sec,
         **builder_kwargs,
     )
-    xml_str = _build_railroad_scene_xml(
-        scene.net,
-        robot_xml_path=robot_xml_path,
-        terrain=scene.terrain,
-    )
+    xml_str = _build_railroad_scene_xml(scene.geometry, robot_xml_path=robot_xml_path)
 
     fd, xml_path = tempfile.mkstemp(suffix=".xml", prefix="lite3_rail_scene_")
     try:
@@ -946,29 +1217,8 @@ def build_railroad_spec(
         if os.path.exists(xml_path):
             os.unlink(xml_path)
 
-    mainline = scene.net.roads[0] if scene.net.roads else []
-    mainline_mission_xy = _build_mainline_mission_xy(scene.net)
-    start_yaw_deg = _extract_yaw_deg(mainline)
-    start_x, start_y = (mainline[0][0], mainline[0][1]) if mainline else (0.0, 0.0)
-    update_scene, mainline_length, clamped_start, follow_speed, wait_sec = _make_follow_target_updater(
-        scene.net,
-        start_distance=follow_target_start,
-        speed=follow_target_speed,
-        start_wait_sec=follow_target_start_wait_sec,
-    )
-
-    meta = {
-        "seed": seed,
-        "roads": len(scene.net.roads),
-        "mission_xy": mainline_mission_xy,
-        "robot_start_pose": [float(start_x), float(start_y), math.radians(start_yaw_deg)],
-        "mainline_length": mainline_length,
-        "follow_target_start": clamped_start,
-        "follow_target_speed": follow_speed,
-        "follow_target_start_wait_sec": wait_sec,
-        "update_scene": update_scene,
-        "railway_scene": scene,
-    }
+    meta = railroad_scene_meta(scene)
+    meta["update_scene"] = _make_follow_target_updater(scene.geometry.follow_target)
     return spec, meta
 
 
@@ -978,6 +1228,8 @@ class RailwayScene:
     def __init__(self, net: RailNetwork, terrain: TerrainSpec | None = None):
         self.net = net
         self.terrain = terrain
+        self.seed: int | None = None
+        self._geometry: RailroadSceneGeometry | None = None
 
     _TERRAIN_DEFAULT = _TERRAIN_DEFAULT  # sentinel: distinguish 'not passed' from None
 
@@ -994,8 +1246,19 @@ class RailwayScene:
         net = RailNetworkBuilder(**builder_kwargs).build(rng, n_roads=n_roads)
         return cls(net, terrain)
 
+    def build_geometry(self, rng: np.random.Generator | None = None, **kwargs) -> RailroadSceneGeometry:
+        """Materialise (and cache) the backend-neutral geometry for this scene."""
+        self._geometry = build_rail_scene_geometry(self.net, terrain=self.terrain, rng=rng, **kwargs)
+        return self._geometry
+
+    @property
+    def geometry(self) -> RailroadSceneGeometry:
+        if self._geometry is None:
+            self.build_geometry()
+        return self._geometry
+
     def log_rerun(self):
-        log_network(self.net, terrain=self.terrain)
+        log_network(self.net, terrain=self.terrain, geometry=self.geometry)
 
 
 if __name__ == "__main__":
