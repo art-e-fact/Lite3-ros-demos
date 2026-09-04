@@ -35,7 +35,7 @@ USE_RECORDING_PATH = None
 
 
 @pytest.fixture(scope="module")
-def recording_path(tmp_path_factory, follow_distance, headless, robot_profile, simulator, follow_camera_budget):
+def recording_path(tmp_path_factory, follow_distance, headless, robot_profile, simulator):
     if USE_RECORDING_PATH is not None:
         return Path(USE_RECORDING_PATH)
 
@@ -59,7 +59,6 @@ def recording_path(tmp_path_factory, follow_distance, headless, robot_profile, s
                 'enabled': True,
                 'video_path': str(video_path),
                 'target_height_m': robot_profile.follow_camera_target_height_m,
-                **follow_camera_budget,
             },
         },
         'rerun': {

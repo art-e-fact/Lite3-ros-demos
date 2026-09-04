@@ -150,8 +150,8 @@ class FollowCameraConfig:
 	enabled: bool = False
 	video_path: str = ""
 	fps: float = 20.0
-	width: int = 640
-	height: int = 480
+	width: int = 800
+	height: int = 600
 	distance_m: float = 4.0
 	elevation_deg: float = -18.0
 	azimuth_offset_deg: float = 60.0

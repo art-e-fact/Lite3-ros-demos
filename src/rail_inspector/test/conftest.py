@@ -65,13 +65,3 @@ def robot_profile(request):
 @pytest.fixture(scope='session')
 def simulator(request):
     return str(request.config.getoption('--simulator')).strip().lower()
-
-
-@pytest.fixture(scope='session')
-def follow_camera_budget(simulator) -> dict:
-    """Newton renders the follow camera with a raytracer that is slow on the CPU device.
-    MuJoCo renders through EGL cheaply and keeps its defaults.
-    """
-    if simulator == 'newton':
-        return {'width': 320, 'height': 240, 'fps': 10.0}
-    return {}

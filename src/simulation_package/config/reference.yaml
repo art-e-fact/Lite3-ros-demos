@@ -97,8 +97,8 @@ sensors:
     enabled: false
     video_path: ''
     fps: 20.0
-    width: 640
-    height: 480
+    width: 800
+    height: 600
     distance_m: 4.0
     elevation_deg: -18.0
     azimuth_offset_deg: 60.0

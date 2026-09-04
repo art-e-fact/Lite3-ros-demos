@@ -54,7 +54,16 @@ class NewtonSensorManager:
     per step for whichever sensors are due and then renders them all from that fit.
     """
 
-    def __init__(self, model, state, node, dt: float, options: NewtonSensorOptions, robot_body_index: int = 0):
+    def __init__(
+        self,
+        model,
+        state,
+        node,
+        dt: float,
+        options: NewtonSensorOptions,
+        robot_body_index: int = 0,
+        viewer=None,
+    ):
         self.model = model
         self.node = node
         self.static_tf_broadcaster = StaticTransformBroadcaster(node)
@@ -78,6 +87,7 @@ class NewtonSensorManager:
             node,
             config=options.follow_camera,
             robot_body_index=robot_body_index,
+            viewer=viewer,
             bvh=None,  # assigned below once the shared BVH exists
         )
 
@@ -122,7 +132,7 @@ class NewtonSensorManager:
         if due_robosense:
             self.robosense.update(state, step_count, timestamp)
         if due_camera:
-            self.follow_camera.update(state, refit=False)
+            self.follow_camera.update(state, refit=False, timestamp=timestamp)
 
     def warmup(self, state, timestamp: float = 0.0):
         """Render every enabled sensor once so their Warp kernels are compiled.
@@ -143,7 +153,7 @@ class NewtonSensorManager:
         if self.robosense.enabled:
             self.robosense.warmup(state, timestamp)
         if self.follow_camera.enabled:
-            self.follow_camera.render(state, refit=False)
+            self.follow_camera.render(state, refit=False, timestamp=timestamp)
 
     def close(self):
         self.follow_camera.close()

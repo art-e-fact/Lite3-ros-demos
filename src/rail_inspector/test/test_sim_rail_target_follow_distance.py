@@ -29,7 +29,7 @@ _LOGIC_LAUNCH_PARAMS = {
 }
 
 
-def test_robot_travels_minimum_distance(tmp_path, simulator, headless, follow_camera_budget):
+def test_robot_travels_minimum_distance(tmp_path, simulator, headless):
 
     OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
     test_video_path = OUTPUT_FOLDER / f'lite3_{simulator}_rail_target_follow_distance.mp4'
@@ -52,7 +52,6 @@ def test_robot_travels_minimum_distance(tmp_path, simulator, headless, follow_ca
             'follow_camera': {
                 'enabled': True,
                 'video_path': str(test_video_path),
-                **follow_camera_budget,
             },
         },
         'rerun': {

@@ -186,6 +186,7 @@ def run_newton(config: SimulationConfig, ros_args: list[str] | None = None):
         DT,
         sensor_options,
         robot_body_index=_robot_body_index(sim, profile),
+        viewer=viewer,
     )
 
     state_every_steps = max(1, int(round(1.0 / (config.robot.state_frequency_hz * DT))))

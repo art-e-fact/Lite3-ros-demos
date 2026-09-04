@@ -1,9 +1,19 @@
 """Offscreen third-person follow camera video recorder for the Newton backend.
 
 Mirrors ``sensors/mujoco/follow_camera_recorder.FollowCameraRecorder``: an
-offscreen RGB camera that trails the robot base and writes an mp4.  Newton has
-no offscreen GL renderer that is safe to use headless, so this renders with
-``SensorTiledCamera`` (pure Warp, works on the CPU device too).
+offscreen RGB camera that trails the robot base and writes an mp4.
+
+Frames come from Newton's GL viewer via ``ViewerGL.get_frame`` so the video looks
+like the Newton screen, headless or not (like MuJoCo's EGL recorder):
+
+* ``headless: false``: the interactive window, at its own resolution; its camera
+  is driven to the follow pose while recording.
+* ``headless: true``: a private EGL-backed ``ViewerGL`` at ``width`` x ``height``
+  that needs no display server.  The physics loop never sees it, so the CUDA
+  graph stays enabled.
+
+If no GL context can be created at all, it falls back to ``SensorTiledCamera``
+(pure Warp raytracer, works on the CPU device too, but slow there).
 
 Camera placement replicates MuJoCo's free-camera semantics so both backends
 frame the robot the same way:
@@ -23,8 +33,9 @@ import math
 from pathlib import Path
 
 import imageio.v2 as imageio
-import numpy as np
 from newton._src.sensors.sensor_tiled_camera import SensorTiledCamera
+import numpy as np
+import warp as wp
 
 from sensors.newton.geometry import camera_transforms
 from simulation_config import FollowCameraConfig
@@ -60,6 +71,8 @@ class NewtonFollowCameraRecorder:
         config: ``simulation_config.FollowCameraConfig``.
         robot_body_index: index into ``state.body_q`` of the robot base body.
         bvh: shared ``sensors.newton.bvh.NewtonBvh`` (or ``None`` to own one).
+        viewer: open ``newton.viewer.ViewerGL`` to grab frames from, or ``None``
+            to raytrace offscreen.
     """
 
     def __init__(
@@ -69,12 +82,15 @@ class NewtonFollowCameraRecorder:
         config: FollowCameraConfig | None = None,
         robot_body_index: int = 0,
         bvh=None,
+        viewer=None,
     ):
         self.model = model
         self.logger = _resolve_logger(node_or_logger)
         self.config = config or FollowCameraConfig()
         self.robot_body_index = int(robot_body_index)
         self.bvh = bvh
+        self.viewer = viewer if hasattr(viewer, "get_frame") else None
+        self._owns_viewer = False
         self.enabled = bool(self.config.enabled)
         self.video_path = str(self.config.video_path).strip()
         self.fps = float(self.config.fps)
@@ -92,7 +108,9 @@ class NewtonFollowCameraRecorder:
             return
 
         if not self.video_path:
-            raise ValueError("follow_camera_video_path must be set when enable_follow_camera is true")
+            raise ValueError(
+                "follow_camera_video_path must be set when enable_follow_camera is true"
+            )
 
         output_path = Path(self.video_path).expanduser()
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -100,40 +118,67 @@ class NewtonFollowCameraRecorder:
 
         width = int(self.config.width)
         height = int(self.config.height)
-        self.sensor = SensorTiledCamera(model, load_textures=False)
-        self.sensor.default_render_config.enable_shadows = True
-        # Textures are a CPU-device liability and the scene has none worth showing.
-        self.sensor.default_render_config.enable_textures = False
-        self.sensor.utils.create_default_light(enable_shadows=True)
-        self.rays = self.sensor.utils.compute_camera_rays_pinhole(
-            width, height, camera_fovs=math.radians(self.fov_deg)
-        )
-        self.color_image = self.sensor.utils.create_color_image_output(width, height, camera_count=1)
+        self.sensor = None
+        if self.viewer is None:
+            self.viewer = _create_headless_viewer(model, width, height, self.logger)
+            self._owns_viewer = self.viewer is not None
+        if self.viewer is not None:
+            # The mp4 takes the viewer's window size; width/height size the raytracer.
+            width, height = self.viewer.renderer.window.get_framebuffer_size()
+            width, height = width - width % 8, height - height % 8  # see render()
+            source = "Newton viewer (EGL)" if self._owns_viewer else "Newton viewer"
+        else:
+            self.sensor = SensorTiledCamera(model, load_textures=False)
+            self.sensor.default_render_config.enable_shadows = True
+            # Textures are a CPU-device liability and the scene has none worth showing.
+            self.sensor.default_render_config.enable_textures = False
+            self.sensor.utils.create_default_light(enable_shadows=True)
+            self.rays = self.sensor.utils.compute_camera_rays_pinhole(
+                width, height, camera_fovs=math.radians(self.fov_deg)
+            )
+            self.color_image = self.sensor.utils.create_color_image_output(
+                width, height, camera_count=1
+            )
+            source = "Warp raytracer"
 
         self.writer = imageio.get_writer(
             self.video_path,
             fps=self.fps,
             codec="libx264",
             quality=self.config.quality,
-            macro_block_size=16,
+            macro_block_size=8,  # 800x600 is not a multiple of 16
         )
         self.closed = False
         self._log_info(
             f"Newton follow camera recording enabled: {self.video_path} "
-            f"({width}x{height} @ {self.fps:.1f} Hz, fov {self.fov_deg:.0f} deg)"
+            f"({width}x{height} @ {self.fps:.1f} Hz, fov {self.fov_deg:.0f} deg, {source})"
         )
 
-    def render(self, state, refit: bool = True) -> np.ndarray | None:
+    def render(self, state, refit: bool = True, timestamp: float = 0.0) -> np.ndarray | None:
         """Render one RGB frame (H, W, 3) uint8 without writing it to the video."""
         if not self.enabled or self.closed:
             return None
+        position, forward, azimuth, elevation = self._camera_pose(state)
+
+        if self.viewer is not None:
+            # Drive the interactive camera to the follow pose and grab the GL frame.
+            self.viewer.set_camera(
+                wp.vec3(*position), math.degrees(elevation), math.degrees(azimuth)
+            )
+            self.viewer.begin_frame(timestamp)
+            self.viewer.log_state(state)
+            self.viewer.end_frame()
+            frame = self.viewer.get_frame().numpy()
+            # Crop to the writer's macro block so odd window sizes are not resampled.
+            h, w = frame.shape[:2]
+            return np.ascontiguousarray(frame[: h - h % 8, : w - w % 8])
+
         if refit and self.bvh is not None:
             self.bvh.refit(state)
         elif refit:
             self.model.bvh_refit_shapes(state)
 
-        position, rotation = self._camera_pose(state)
-        transforms = camera_transforms(position, rotation, self.model.world_count)
+        transforms = camera_transforms(position, _look_rotation(forward), self.model.world_count)
         self.sensor.update(
             state,
             transforms,
@@ -144,9 +189,9 @@ class NewtonFollowCameraRecorder:
         rgba = self.sensor.utils.to_rgba_from_color(self.color_image).numpy()
         return np.ascontiguousarray(rgba[0, :, :, :3])
 
-    def update(self, state, refit: bool = True) -> None:
+    def update(self, state, refit: bool = True, timestamp: float = 0.0) -> None:
         """Render one frame and append it to the video."""
-        frame = self.render(state, refit=refit)
+        frame = self.render(state, refit=refit, timestamp=timestamp)
         if frame is None:
             return
         self.writer.append_data(frame)
@@ -161,13 +206,16 @@ class NewtonFollowCameraRecorder:
             return
         self.closed = True
         self.writer.close()
+        if self._owns_viewer:
+            self.viewer.close()
         self._log_info(
             f"Newton follow camera video saved: {self.video_path} ({self.frame_count} frames)"
         )
 
     # -- camera placement ---------------------------------------------------
 
-    def _camera_pose(self, state) -> tuple[np.ndarray, np.ndarray]:
+    def _camera_pose(self, state) -> tuple[np.ndarray, np.ndarray, float, float]:
+        """Camera position, forward unit vector, azimuth and elevation (radians)."""
         body_q = state.body_q.numpy()[self.robot_body_index]
         target = np.asarray(body_q[0:3], dtype=np.float64).copy()
         target[2] += float(self.config.target_height_m)
@@ -188,7 +236,7 @@ class NewtonFollowCameraRecorder:
             dtype=np.float64,
         )
         position = self._lookat - float(self.config.distance_m) * forward
-        return position, _look_rotation(forward)
+        return position, forward, azimuth, elevation
 
     # -- logging ------------------------------------------------------------
 
@@ -197,6 +245,26 @@ class NewtonFollowCameraRecorder:
             self.logger.info(f"[INFO] {message}")
         else:
             print(f"[INFO] {message}")
+
+
+def _create_headless_viewer(model, width: int, height: int, logger):
+    """Invisible EGL-backed ``ViewerGL`` (no display server needed), or ``None``."""
+    try:
+        import pyglet
+
+        pyglet.options["headless"] = True
+        import newton.viewer
+
+        viewer = newton.viewer.ViewerGL(width=width, height=height, headless=True)
+        viewer.set_model(model)
+        return viewer
+    except Exception as exc:  # no EGL/GL at all: fall back to the raytracer
+        message = f"[WARN] No headless GL viewer for the follow camera, raytracing instead: {exc}"
+        if logger is not None:
+            logger.warn(message)
+        else:
+            print(message)
+        return None
 
 
 def _resolve_logger(node_or_logger):
