@@ -2,12 +2,16 @@ import numpy as np
 import rclpy
 from builtin_interfaces.msg import Time
 from drdds.msg import ImuData, ImuDataValue, JointData, JointsData, JointsDataCmd, JointsDataValue, MetaType
-from geometry_msgs.msg import Quaternion, TransformStamped
+from geometry_msgs.msg import Pose, PoseArray, Quaternion, TransformStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
+from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
+from rosgraph_msgs.msg import Clock
 from tf2_ros import TransformBroadcaster
 
 from simulation import DEFAULT_DAMPING, DEFAULT_STIFFNESS, ROBOT_PROFILES, JointCommand, RobotProfile, quat_xyzw_to_rpy, rotate_world_to_body
+
+WAYPOINT_REPUBLISH_PERIOD_SEC = 1.0
 
 
 class NewtonRosBridge:
@@ -28,8 +32,24 @@ class NewtonRosBridge:
         self.imu_pub = self.node.create_publisher(ImuData, "/IMU_DATA", 200)
         self.joints_pub = self.node.create_publisher(JointsData, "/JOINTS_DATA", 200)
         self.odom_pub = self.node.create_publisher(Odometry, "/odom", 50)
+        # The navigation stack runs with use_sim_time, so /clock is the only time source.
+        self.clock_pub = self.node.create_publisher(Clock, "/clock", 10)
         self.tf_broadcaster = TransformBroadcaster(self.node)
         self.cmd_sub = self.node.create_subscription(JointsDataCmd, "/JOINTS_CMD", self._cmd_callback, 10)
+
+        # Latched so a navigation node started after the simulator still gets the mission.
+        waypoint_qos = QoSProfile(
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self.waypoint_pub = self.node.create_publisher(PoseArray, "/procedural_waypoints", waypoint_qos)
+        self.procedural_waypoints_msg: PoseArray | None = None
+        self.waypoint_timer = None
+        self.scene_meta: dict = {}
+        self._sim_time = 0.0
+        self.first_command_time: float | None = None # Sim time of first /JOINTS_CMD
 
     def get_logger(self):
         return self.node.get_logger()
@@ -52,7 +72,57 @@ class NewtonRosBridge:
             torque=self.tau_ff.copy(),
         )
 
+    def publish_clock(self, timestamp: float):
+        """Publish simulated time. Called every step"""
+        self._sim_time = float(timestamp)
+        msg = Clock()
+        msg.clock = self._stamp(timestamp)
+        self.clock_pub.publish(msg)
+
+    def set_scene_meta(self, scene_meta: dict | None):
+        """Publish the procedural mission described by *scene_meta* on /procedural_waypoints."""
+        self.scene_meta = scene_meta or {}
+        self.procedural_waypoints_msg = self._build_waypoint_pose_array(self.scene_meta)
+        if self.procedural_waypoints_msg is None:
+            return
+        self.node.get_logger().info(
+            f"Publishing mission with {len(self.procedural_waypoints_msg.poses)} "
+            "ordered waypoints on /procedural_waypoints"
+        )
+        self._publish_procedural_waypoints()
+        if self.waypoint_timer is None:
+            self.waypoint_timer = self.node.create_timer(
+                WAYPOINT_REPUBLISH_PERIOD_SEC, self._publish_procedural_waypoints
+            )
+
+    @staticmethod
+    def _build_waypoint_pose_array(scene_meta: dict) -> PoseArray | None:
+        mission_xy = scene_meta.get("mission_xy", [])
+        if not mission_xy:
+            return None
+
+        msg = PoseArray()
+        msg.header.frame_id = "odom"
+        msg.poses = []
+        for xy in mission_xy:
+            if len(xy) != 2:
+                continue
+            pose = Pose()
+            pose.position.x = float(xy[0])
+            pose.position.y = float(xy[1])
+            pose.position.z = 0.0
+            pose.orientation.w = 1.0
+            msg.poses.append(pose)
+        return msg if msg.poses else None
+
+    def _publish_procedural_waypoints(self):
+        if self.procedural_waypoints_msg is None:
+            return
+        self.procedural_waypoints_msg.header.stamp = self._stamp(self._sim_time)
+        self.waypoint_pub.publish(self.procedural_waypoints_msg)
+
     def publish_state(self, timestamp: float, state, last_tau: np.ndarray):
+        self._sim_time = float(timestamp)
         stamp = self._stamp(timestamp)
         rpy_deg = np.degrees(quat_xyzw_to_rpy(state.quat_xyzw))
         body_acc = rotate_world_to_body(state.quat_xyzw, np.array([0.0, 0.0, 9.81], dtype=np.float32))
@@ -133,6 +203,13 @@ class NewtonRosBridge:
         if len(msg.data.joints_data) not in (self.num_dofs, 16):
             self.node.get_logger().warn("Received JointsDataCmd with incorrect number of joints")
             return
+
+        if self.first_command_time is None:
+            self.first_command_time = self._sim_time
+            self.node.get_logger().info(
+                f"First /JOINTS_CMD received at sim_time={self._sim_time:.3f}s; "
+                "starting follow-target wait clock"
+            )
 
         pub_pos = np.zeros(self.num_dofs, dtype=np.float32)
         pub_vel = np.zeros(self.num_dofs, dtype=np.float32)
