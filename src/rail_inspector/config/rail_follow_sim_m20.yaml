@@ -53,7 +53,9 @@ rail_detector_node:
     follow_target_kernel_size: 0.35
     follow_target_sample_step: 0.10
     follow_target_min_height: 0.22
-    follow_target_max_height: 0.8
+    # The 1.8 m target pole rasterises to a ~0.75 m median cell height from the M20 lidar,
+    # so 0.8 rejected it on 10-20% of frames and the follower lost it (both simulators).
+    follow_target_max_height: 1.6
 
 rail_target_follower_node:
   ros__parameters:
