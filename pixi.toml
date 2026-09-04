@@ -78,7 +78,7 @@ depends-on = ["setup"]
 
 
 [tasks.test-sim-sensors]
-cmd = "pytest src/simulation_package/test/test_simulation_sensors.py -vv -s"
+cmd = "pytest src/simulation_package/test/test_simulation_sensors.py src/simulation_package/test/test_newton_imu.py -vv -s"
 default-environment = "sim-test"
 depends-on = ["build"]
 
