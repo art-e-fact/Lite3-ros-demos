@@ -242,9 +242,11 @@ class SimControlHarness:
         self._domain_id = (
             domain_id if domain_id is not None else str(200 + (os.getpid() % 30))
         )
-        self._sim_pixi_env = (
-            sim_pixi_env if sim_pixi_env is not None else os.environ.get('SIM_PIXI_ENV', 'sim')
-        )
+        self._sim_pixi_env = sim_pixi_env or subprocess.run(
+            ['scripts/sim_pixi_env.sh'],
+            cwd=str(self._repo_root),
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
         self._max_runtime_sec = max_runtime_sec
         self._sim_timeout_sec = sim_timeout_sec
         self._stall_timeout_sec = stall_timeout_sec
@@ -306,6 +308,9 @@ class SimControlHarness:
         self._context = rclpy.context.Context()
         rclpy.init(context=self._context)
         self._node = rclpy.create_node('sim_control_harness', context=self._context)
+        self._node.get_logger().info(
+            f'Launching simulator with pixi env: {self._sim_pixi_env}'
+        )
         self._executor = SingleThreadedExecutor(context=self._context)
         self._executor.add_node(self._node)
 
