@@ -1,0 +1,7 @@
+simulator: newton
+headless: false
+scene: procedural://blocks
+sensors:
+  realsense:
+    enable_depth: true
+    enable_color: true

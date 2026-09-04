@@ -20,13 +20,15 @@ from sensors.common.lidar import (
 )
 from sensors.common.pointcloud import make_xyz_pointcloud
 from sensors.common.resources import MID360_XML_PATH
-from sensors.common.transforms import make_transform, quat_from_matrix
+from sensors.common.transforms import make_transform, quat_from_matrix, sim_time_stamp
 from sensors.newton.geometry import (
     builder_shape_local_pose,
     camera_transforms,
+    filter_self_hits,
     find_builder_body_index,
     find_builder_shape_index,
     find_site_index,
+    robot_shape_mask,
     site_local_pose,
     site_world_pose,
 )
@@ -71,8 +73,7 @@ class NewtonMid360LidarSensor:
             return
 
         self.site_index = find_site_index(model, self.config.mount_site_name)
-        self.body_id = int(model.shape_body.numpy()[self.site_index])
-        self.shape_body = model.shape_body.numpy()
+        self.self_shape = robot_shape_mask(model, self.site_index)
         self.samples_per_scan = int(self.config.samples_per_scan)
         self.downsample = max(1, int(self.config.downsample))
         self._pattern_index = 0
@@ -113,13 +114,10 @@ class NewtonMid360LidarSensor:
         shape_indices = self.shape_index_image.numpy()[0, 0, 0]
         valid = (ranges >= self.config.range_min) & (ranges <= self.config.range_max)
 
-        valid_shape = shape_indices < len(self.shape_body)
-        hit_bodies = np.full(shape_indices.shape, -9999, dtype=np.int32)
-        hit_bodies[valid_shape] = self.shape_body[shape_indices[valid_shape].astype(np.int64)]
-        valid &= hit_bodies != self.body_id
+        valid &= filter_self_hits(self.self_shape, shape_indices)
 
         points = (local_dirs[valid] * ranges[valid, None]).astype(np.float32)
-        self.pub.publish(make_xyz_pointcloud(points, self.node.get_clock().now().to_msg(), self.config.frame_id))
+        self.pub.publish(make_xyz_pointcloud(points, sim_time_stamp(timestamp), self.config.frame_id))
 
     def _sample_dirs(self) -> np.ndarray:
         start = self._pattern_index
