@@ -274,5 +274,6 @@ def test_simulation_publishes_realsense_outputs(tmp_path, simulator):
     _run_sensor_test(tmp_path, simulator, "realsense")
 
 
-def test_simulation_publishes_robosense_outputs(tmp_path):
-    _run_sensor_test(tmp_path, "mujoco", "robosense")
+@pytest.mark.parametrize("simulator", ["mujoco", "newton"])
+def test_simulation_publishes_robosense_outputs(tmp_path, simulator):
+    _run_sensor_test(tmp_path, simulator, "robosense")

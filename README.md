@@ -2,7 +2,6 @@
 Tested on Linux(x64) and MacOS (arm64).
 
 * The project is currently unsupported on Windows (Due to lack of dependencies available on robostack for Windows).
-* The project does run on WSL2, but when rendering Mujoco is extremely slow (OpenGL is not passed through by Nvidia GPUs to WSL).
 
 ## Requirements
 
@@ -19,23 +18,32 @@ Note: All the ROS environments are build under the `rosbuild` folder. You can de
 ### Run rail-following demo
 _Note: The simulation and the robot controller are requiring different ROS 2 versions, so we need to start them as separate processes._
 
+The simulator defaults to **Newton**. Tasks run in the `sim` pixi environment with the CPU build of Warp by default, which works on any machine (including CI) but is slow (about 0.4x real-time in the integration tests with sensors and recording enabled). On Linux with an NVIDIA GPU, use the `-gpu` task variants (e.g. `sim-rail-follow-gpu`) to run in the `sim-gpu` environment with the CUDA build of Warp instead.
+
 **Lite3:**
 ```bash
 pixi run sim-rail-follow
+# or, with GPU acceleration:
+pixi run sim-rail-follow-gpu
 ```
-In a separate terminal, run before the target gets too far in the simulation:
+In a separate terminal, run:
 ```bash
 pixi run nav-rail-follow
 ```
+(The follow target only starts moving once the simulator sees this controller's first command, so there's no rush to start it.)
 
 **M20:**
 ```bash
 pixi run sim-rail-follow-m20
+# or, with GPU acceleration:
+pixi run sim-rail-follow-m20-gpu
 ```
 In a separate terminal:
 ```bash
 pixi run nav-rail-follow-m20
 ```
+
+MuJoCo is still available as an explicit alternative; see the [MuJoCo](#mujoco) section below for the `-mujoco` task variants.
 
 ### Running tests with pytest
 ```bash
@@ -44,8 +52,9 @@ pixi run test-rail-follow
 pixi run test-rerun-recording
 pixi run test-rerun-recording-m20   # M20 with Robosense lidar
 ```
+These run against Newton by default. Each has a `-mujoco` variant (e.g. `pixi run test-rerun-recording-mujoco`) that runs the same test against MuJoCo instead, and a `-gpu` variant (e.g. `pixi run test-rerun-recording-gpu`) that launches the Newton simulator in the `sim-gpu` environment.
 
-Pass `--robot m20` (or `--robot lite3`) to `test_rerun_recording.py` directly for other pytest invocations.
+Pass `--robot m20` (or `--robot lite3`) and `--simulator mujoco` (or `--simulator newton`, the default) to `test_rerun_recording.py` and `test_sim_rail_target_follow_distance.py` directly for other pytest invocations. The simulator that a test launches can also be pointed at a different pixi environment by setting `SIM_PIXI_ENV` (defaults to `sim`; the `-gpu` pixi tasks set it to `sim-gpu`).
 
 
 ### Running tests with Artefacts
@@ -74,6 +83,7 @@ pixi run -e artefacts artefacts run test-rail-follow
 pixi run -e artefacts artefacts run test-rerun-recording
 pixi run -e artefacts artefacts run test-sim-sensors
 ```
+MuJoCo variants of the integration jobs (`test-rail-follow-mujoco`, `test-rerun-recording-mujoco`, `test-rerun-recording-m20-mujoco`) are also defined in `artefacts.yaml`.
 
 ## Logging to Rerun
 To start logging the sensor, tf, and joint state data to Rerun:
@@ -106,15 +116,18 @@ Notes:
  - To sync the UI when nodes restart, click the `refresh` button
 
 
+## MuJoCo
+
+MuJoCo remains available as an explicit alternative to Newton via the `-mujoco` task variants (e.g. `pixi run sim-rail-follow-mujoco`, `pixi run test-rerun-recording-mujoco`), or by passing `--simulator mujoco` to the pytest integration tests directly.
+
+Notes:
+* macOS requires `mjpython` instead of `python` to launch the simulator; the `-mujoco` pixi tasks (and `SimControlHarness`) already handle this automatically on `osx-arm64`.
+* The project does run on WSL2, but when rendering MuJoCo is extremely slow (OpenGL is not passed through by Nvidia GPUs to WSL).
 
 
-## WIP
+## Newton
 
-
-### Run in Newton (experimental)
-The same robots can also run in Newton on a currently empty ground-plane.
-
-By default tasks run in the `sim` environment with the CPU build of Warp, which works on any machine (including CI). On Linux with an NVIDIA GPU, use the `-gpu` task variants (e.g. `sim-newton-gpu`) to run in the `sim-gpu` environment with the CUDA build of Warp.
+The same robots also run in Newton, including on the Karuizawa world.
 
 **Lite3:**
 ```bash
@@ -145,7 +158,4 @@ Large assets are loaded on-demand. See [docs/remote_assets.md](docs/remote_asset
 
 Notes:
 * GPU acceleration is opt-in via the `sim-gpu` environment (see `[feature.sim-cuda]` in `pixi.toml`); it requires an NVIDIA driver with CUDA 12.
-
-TODOs with Newton:
- - Procedural scenes
- - Rail-follow demos and tests port
+* On the default CPU (`sim`) environment, Newton is significantly slower than real-time; performance is limited until GPU acceleration is used.

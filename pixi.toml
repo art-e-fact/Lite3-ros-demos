@@ -87,33 +87,84 @@ cmd = "pytest src/rail_inspector/test/test_sim_rail_target_follow_distance.py -v
 default-environment = "nav-test"
 depends-on = ["build"]
 
+[tasks.test-rail-follow-mujoco]
+cmd = "pytest src/rail_inspector/test/test_sim_rail_target_follow_distance.py --simulator mujoco -vv -s"
+default-environment = "nav-test"
+depends-on = ["build"]
+
+# GPU (CUDA warp) variant: launches the simulator in the sim-gpu environment.
+[tasks.test-rail-follow-gpu]
+cmd = "pytest src/rail_inspector/test/test_sim_rail_target_follow_distance.py -vv -s"
+default-environment = "nav-test"
+depends-on = ["build"]
+env = { SIM_PIXI_ENV = "sim-gpu" }
+
 [tasks.test-rerun-recording]
 cmd = "pytest src/rail_inspector/test/test_rerun_recording.py -vv -s"
 default-environment = "nav-test"
 depends-on = ["build"]
+
+[tasks.test-rerun-recording-mujoco]
+cmd = "pytest src/rail_inspector/test/test_rerun_recording.py --simulator mujoco -vv -s"
+default-environment = "nav-test"
+depends-on = ["build"]
+
+[tasks.test-rerun-recording-gpu]
+cmd = "pytest src/rail_inspector/test/test_rerun_recording.py -vv -s"
+default-environment = "nav-test"
+depends-on = ["build"]
+env = { SIM_PIXI_ENV = "sim-gpu" }
 
 [tasks.test-rerun-recording-m20]
 cmd = "pytest src/rail_inspector/test/test_rerun_recording.py --robot m20 -vv -s"
 default-environment = "nav-test"
 depends-on = ["build"]
 
+[tasks.test-rerun-recording-m20-mujoco]
+cmd = "pytest src/rail_inspector/test/test_rerun_recording.py --robot m20 --simulator mujoco -vv -s"
+default-environment = "nav-test"
+depends-on = ["build"]
+
+[tasks.test-rerun-recording-m20-gpu]
+cmd = "pytest src/rail_inspector/test/test_rerun_recording.py --robot m20 -vv -s"
+default-environment = "nav-test"
+depends-on = ["build"]
+env = { SIM_PIXI_ENV = "sim-gpu" }
+
 [tasks.sim-rail-follow]
+cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/newton_procedural_railroad.yaml"
+default-environment = "sim"
+depends-on = ["build"]
+
+[tasks.sim-rail-follow-m20]
+cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/newton_procedural_railroad_m20.yaml"
+default-environment = "sim"
+depends-on = ["build"]
+
+# GPU (CUDA warp) variants of the Newton rail-follow tasks.
+[tasks.sim-rail-follow-gpu]
+depends-on = [{ task = "sim-rail-follow", environment = "sim-gpu" }]
+
+[tasks.sim-rail-follow-m20-gpu]
+depends-on = [{ task = "sim-rail-follow-m20", environment = "sim-gpu" }]
+
+[tasks.sim-rail-follow-mujoco]
 cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/mujoco_procedural_railroad.yaml"
 default-environment = "sim"
 depends-on = ["build"]
 
 # macOS requires mjpython
-[target.osx-arm64.tasks.sim-rail-follow]
+[target.osx-arm64.tasks.sim-rail-follow-mujoco]
 cmd = "mjpython -m simulation_package.start_simulation --config src/simulation_package/config/mujoco_procedural_railroad.yaml"
 default-environment = "sim"
 depends-on = ["build"]
 
-[tasks.sim-rail-follow-m20]
+[tasks.sim-rail-follow-m20-mujoco]
 cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/mujoco_procedural_railroad_m20.yaml"
 default-environment = "sim"
 depends-on = ["build"]
 
-[target.osx-arm64.tasks.sim-rail-follow-m20]
+[target.osx-arm64.tasks.sim-rail-follow-m20-mujoco]
 cmd = "mjpython -m simulation_package.start_simulation --config src/simulation_package/config/mujoco_procedural_railroad_m20.yaml"
 default-environment = "sim"
 depends-on = ["build"]
