@@ -10,9 +10,6 @@ from sim_control_harness import SimControlHarness, StopReason
 TEST_TIMEOUT_SEC = 60.0
 
 OUTPUT_FOLDER = Path(os.getenv('ARTEFACTS_SCENARIO_UPLOAD_DIR', './'))
-TEST_VIDEO_PATH = OUTPUT_FOLDER / 'lite3_rail_target_follow_distance.mp4'
-TEST_RRD_PATH = OUTPUT_FOLDER / 'lite3_rail_target_follow_distance.rrd'
-TEST_CONFIG_PATH = OUTPUT_FOLDER / 'lite3_rail_target_follow_distance.yaml'
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SIM_PACKAGE_ROOT = REPO_ROOT / 'src' / 'simulation_package'
@@ -32,18 +29,19 @@ _LOGIC_LAUNCH_PARAMS = {
 }
 
 
-def test_robot_travels_minimum_distance(tmp_path):
-    headless_str = str(artefacts_params.get('headless', 'false')).strip().lower()
-    headless = headless_str in ('true', '1', 'yes', 'on')
+def test_robot_travels_minimum_distance(tmp_path, simulator, headless, follow_camera_budget):
 
     OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
-    if TEST_VIDEO_PATH.exists():
-        TEST_VIDEO_PATH.unlink()
-    if TEST_RRD_PATH.exists():
-        TEST_RRD_PATH.unlink()
+    test_video_path = OUTPUT_FOLDER / f'lite3_{simulator}_rail_target_follow_distance.mp4'
+    test_rrd_path = OUTPUT_FOLDER / f'lite3_{simulator}_rail_target_follow_distance.rrd'
+    test_config_path = OUTPUT_FOLDER / f'lite3_{simulator}_rail_target_follow_distance.yaml'
+    if test_video_path.exists():
+        test_video_path.unlink()
+    if test_rrd_path.exists():
+        test_rrd_path.unlink()
 
     sim_config = {
-        'simulator': 'mujoco',
+        'simulator': simulator,
         'scene': 'procedural://railroad',
         'headless': headless,
         'procedural_env_seed': 123,
@@ -53,13 +51,15 @@ def test_robot_travels_minimum_distance(tmp_path):
             },
             'follow_camera': {
                 'enabled': True,
-                'video_path': str(TEST_VIDEO_PATH),
+                'video_path': str(test_video_path),
+                **follow_camera_budget,
             },
         },
         'rerun': {
             'enabled': True,
             'spawn': False,
-            'save_path': str(TEST_RRD_PATH),
+            'save_path': str(test_rrd_path),
+            'close_viewer_on_exit': True,
         },
     }
 
@@ -76,7 +76,7 @@ def test_robot_travels_minimum_distance(tmp_path):
 
     with SimControlHarness(
         sim_config,
-        config_path=TEST_CONFIG_PATH,
+        config_path=test_config_path,
         log_dir=tmp_path,
         repo_root=REPO_ROOT,
         sim_package_root=SIM_PACKAGE_ROOT,
@@ -108,12 +108,12 @@ def test_robot_travels_minimum_distance(tmp_path):
         f"from {harness.message_count} odom messages, last_xy={harness.last_xy}"
     )
 
-    assert TEST_VIDEO_PATH.exists(), f'expected follow-camera video at {TEST_VIDEO_PATH}'
-    assert TEST_VIDEO_PATH.stat().st_size > 1024, (
-        f'follow-camera video at {TEST_VIDEO_PATH} is empty or too small'
+    assert test_video_path.exists(), f'expected follow-camera video at {test_video_path}'
+    assert test_video_path.stat().st_size > 1024, (
+        f'follow-camera video at {test_video_path} is empty or too small'
     )
 
-    assert TEST_RRD_PATH.exists(), f'expected Rerun recording at {TEST_RRD_PATH}'
-    assert TEST_RRD_PATH.stat().st_size > 1024, (
-        f'Rerun recording at {TEST_RRD_PATH} is empty or too small'
+    assert test_rrd_path.exists(), f'expected Rerun recording at {test_rrd_path}'
+    assert test_rrd_path.stat().st_size > 1024, (
+        f'Rerun recording at {test_rrd_path} is empty or too small'
     )

@@ -39,6 +39,13 @@ def pytest_addoption(parser):
         choices=['lite3', 'm20'],
         help='Robot profile for integration tests (lite3 or m20)',
     )
+    parser.addoption(
+        '--simulator',
+        action='store',
+        default='newton',
+        choices=['newton', 'mujoco'],
+        help='Simulator backend for integration tests (newton or mujoco)',
+    )
 
 
 @pytest.fixture(scope='session')
@@ -53,3 +60,18 @@ def robot_profile(request):
     params = _artefacts_params()
     robot_name = params.get('robot') or request.config.getoption('--robot')
     return get_robot_profile(str(robot_name).strip().lower())
+
+
+@pytest.fixture(scope='session')
+def simulator(request):
+    return str(request.config.getoption('--simulator')).strip().lower()
+
+
+@pytest.fixture(scope='session')
+def follow_camera_budget(simulator) -> dict:
+    """Newton renders the follow camera with a raytracer that is slow on the CPU device.
+    MuJoCo renders through EGL cheaply and keeps its defaults.
+    """
+    if simulator == 'newton':
+        return {'width': 320, 'height': 240, 'fps': 10.0}
+    return {}

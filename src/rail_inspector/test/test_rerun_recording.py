@@ -35,21 +35,21 @@ USE_RECORDING_PATH = None
 
 
 @pytest.fixture(scope="module")
-def recording_path(tmp_path_factory, follow_distance, headless, robot_profile):
+def recording_path(tmp_path_factory, follow_distance, headless, robot_profile, simulator, follow_camera_budget):
     if USE_RECORDING_PATH is not None:
         return Path(USE_RECORDING_PATH)
 
     robot = robot_profile.name
-    rrd_path = OUTPUT_FOLDER / f"{robot}_recording_test.rrd"
-    video_path = OUTPUT_FOLDER / f"{robot}_recording_test.mp4"
-    config_path = OUTPUT_FOLDER / f"{robot}_recording_test.yaml"
+    rrd_path = OUTPUT_FOLDER / f"{robot}_{simulator}_recording_test.rrd"
+    video_path = OUTPUT_FOLDER / f"{robot}_{simulator}_recording_test.mp4"
+    config_path = OUTPUT_FOLDER / f"{robot}_{simulator}_recording_test.yaml"
 
     for p in (rrd_path, video_path):
         if p.exists():
             p.unlink()
 
     sim_config = {
-        'simulator': 'mujoco',
+        'simulator': simulator,
         'scene': 'procedural://railroad',
         'headless': headless,
         'procedural_env_seed': 123,
@@ -59,12 +59,15 @@ def recording_path(tmp_path_factory, follow_distance, headless, robot_profile):
                 'enabled': True,
                 'video_path': str(video_path),
                 'target_height_m': robot_profile.follow_camera_target_height_m,
+                **follow_camera_budget,
             },
         },
         'rerun': {
             'enabled': True,
             'spawn': not headless,
             'save_path': str(rrd_path),
+            # Never leave a viewer window behind once the test is over.
+            'close_viewer_on_exit': True,
         },
     }
     if robot_profile.sim_robot:
