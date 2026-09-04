@@ -88,6 +88,10 @@ To visualize heightmaps
 ```bash
 pixi run rerun-logger --log_heightmap --use_static_heightmap
 ```
+Select the robot with
+```bash
+pixi run rerun-logger --robot m20
+```
 
 ## TUI Interface
 To launch the terminal user interface run:
@@ -100,3 +104,48 @@ The state of the UI is kept in the ROS parameter server so it's safe to relaunch
 
 Notes:
  - To sync the UI when nodes restart, click the `refresh` button
+
+
+
+
+## WIP
+
+
+### Run in Newton (experimental)
+The same robots can also run in Newton on a currently empty ground-plane.
+
+By default tasks run in the `sim` environment with the CPU build of Warp, which works on any machine (including CI). On Linux with an NVIDIA GPU, use the `-gpu` task variants (e.g. `sim-newton-gpu`) to run in the `sim-gpu` environment with the CUDA build of Warp.
+
+**Lite3:**
+```bash
+pixi run sim-newton
+```
+In separate terminals:
+```bash
+pixi run -e nav ros2 run lite3_sdk_deploy rl_deploy --twist
+pixi run -e nav ros2 run teleop_twist_keyboard teleop_twist_keyboard
+```
+
+**M20:**
+```bash
+pixi run sim-newton-m20
+```
+In separate terminals:
+```bash
+pixi run -e nav ros2 run m20_sdk_deploy rl_deploy --twist
+pixi run -e nav ros2 run teleop_twist_keyboard teleop_twist_keyboard
+```
+
+To use the Karuizawa world:
+```bash
+# part1, part2, part3 are available
+pixi run sim-newton-m20-karuizawa-gpu part1
+```
+Large assets are loaded on-demand. See [docs/remote_assets.md](docs/remote_assets.md) for more details.
+
+Notes:
+* GPU acceleration is opt-in via the `sim-gpu` environment (see `[feature.sim-cuda]` in `pixi.toml`); it requires an NVIDIA driver with CUDA 12.
+
+TODOs with Newton:
+ - Procedural scenes
+ - Rail-follow demos and tests port

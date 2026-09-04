@@ -9,13 +9,13 @@ import newton
 import newton.examples
 import warp as wp
 from newton import JointTargetMode
+from newton.sensors import SensorIMU
 
 from sensors.newton.depth_sensor import NewtonDepthSensor
 from sensors.newton.lidar_sensor import NewtonLidarSensor
 from sensors.newton.mid360_lidar_sensor import NewtonMid360LidarSensor
 
 
-NUM_DOFS = 12
 BASE_DOF_COUNT = 6
 FLOATING_BASE_Q_SIZE = 7
 DT = 0.004
@@ -29,6 +29,56 @@ DEFAULT_JOINT_POS = np.array(
 DEFAULT_STIFFNESS = 30.0
 DEFAULT_DAMPING = 1.0
 ARMATURE = 0.0
+# Each pyramidal condim=3 contact costs 4 rows in MuJoCo's constraint solver.
+CONSTRAINT_ROWS_PER_CONTACT = 4
+
+# M20 sim-to-policy frame, mirrors mujoco_simulation_ros2.py (DdsInterface::Handler).
+M20_JOINT_DIR = np.array(
+    [1, 1, -1, 1, 1, -1, 1, -1, -1, 1, -1, 1, -1, -1, 1, -1],
+    dtype=np.float32,
+)
+M20_POS_OFFSET_RAD = (
+    np.array(
+        [-25, -131, 160, 0, 25, -131, 160, 0, -25, 131, -160, 0, 25, 131, -160, 0],
+        dtype=np.float32,
+    )
+    / 180.0
+    * np.pi
+)
+
+
+@dataclass(frozen=True)
+class RobotProfile:
+    name: str
+    num_dofs: int
+    base_height: float
+    default_joint_pos: np.ndarray
+    effort_limit: np.ndarray  # per-DOF |tau| clamp, mirrors MJCF actuator ctrlrange
+    joint_dir: np.ndarray | None = None  # pub<->raw joint calibration, None = identity
+    pos_offset_rad: np.ndarray | None = None
+
+
+ROBOT_PROFILES: dict[str, RobotProfile] = {
+    "Lite3": RobotProfile(
+        name="Lite3",
+        num_dofs=12,
+        base_height=0.43,
+        default_joint_pos=DEFAULT_JOINT_POS,
+        effort_limit=np.full(12, 30.0, dtype=np.float32),
+    ),
+    "M20": RobotProfile(
+        name="M20",
+        num_dofs=16,
+        base_height=1.0,
+        default_joint_pos=np.array(
+            [-0.438, -1.16, 2.76, 0, 0.438, -1.16, 2.76, 0, -0.438, 1.16, -2.76, 0, 0.438, 1.16, -2.76, 0],
+            dtype=np.float32,
+        ),
+        effort_limit=np.array([76.4, 76.4, 76.4, 21.6] * 4, dtype=np.float32),
+        joint_dir=M20_JOINT_DIR,
+        pos_offset_rad=M20_POS_OFFSET_RAD,
+    ),
+}
 
 
 @dataclass
@@ -48,6 +98,9 @@ class SimulationState:
     angvel_body: np.ndarray
     joint_position: np.ndarray
     joint_velocity: np.ndarray
+    imu_acc: np.ndarray  # specific force at imu_site, sensor frame
+    imu_gyro: np.ndarray  # angular rate at imu_site, sensor frame
+
 
 def create_newton_viewer():
     parser = newton.examples.create_parser()
@@ -87,36 +140,41 @@ def warp_to_numpy(array, fallback_size: int) -> np.ndarray:
 
 
 class NewtonSimulation:
-    def __init__(self, model_path: str, scene_path: str | None = None, headless: bool = True, viewer=None, logger=None, sensor_options=None):
+    def __init__(self, model_path: str, scene_path: str | None = None, headless: bool = True, viewer=None, logger=None, sensor_options=None, profile: RobotProfile | None = None):
         self.model_path = model_path
         self.scene_path = scene_path
         self.headless = headless
         self.viewer = None if headless else viewer
         self.logger = logger
         self.sensor_options = sensor_options
+        self.profile = profile if profile is not None else ROBOT_PROFILES["Lite3"]
+        self.num_dofs = self.profile.num_dofs
         self.device = wp.get_device()
         self.timestamp = 0.0
         self.step_count = 0
 
-        self.kp_cmd = np.full(NUM_DOFS, DEFAULT_STIFFNESS, dtype=np.float32)
-        self.kd_cmd = np.full(NUM_DOFS, DEFAULT_DAMPING, dtype=np.float32)
-        self.pos_cmd = DEFAULT_JOINT_POS.copy()
-        self.vel_cmd = np.zeros(NUM_DOFS, dtype=np.float32)
-        self.tau_ff = np.zeros(NUM_DOFS, dtype=np.float32)
-        self.last_tau = np.zeros(NUM_DOFS, dtype=np.float32)
+        self.kp_cmd = np.full(self.num_dofs, DEFAULT_STIFFNESS, dtype=np.float32)
+        self.kd_cmd = np.full(self.num_dofs, DEFAULT_DAMPING, dtype=np.float32)
+        self.pos_cmd = self.profile.default_joint_pos.copy()
+        self.vel_cmd = np.zeros(self.num_dofs, dtype=np.float32)
+        self.tau_ff = np.zeros(self.num_dofs, dtype=np.float32)
+        self.last_tau = np.zeros(self.num_dofs, dtype=np.float32)
 
-        self.model, self.solver, self.state_0, self.state_1, self.control = self._build_newton_model(model_path, scene_path)
-        self.contacts = self._create_contacts()
+        self.model, self.solver, self.collision_pipeline, self.state_0, self.state_1, self.control = self._build_newton_model(model_path, scene_path)
+        self.contacts = self.collision_pipeline.contacts()
         self.graph = None
         self.use_cuda_graph = False
-        self._control_full_buffers = {}
+        self._joint_f_buffer = np.zeros(BASE_DOF_COUNT + self.num_dofs, dtype=np.float32)
 
         if self.viewer is not None:
             self.viewer.set_model(self.model)
             self.viewer.vsync = True
+            # newton.examples.init() shows a splash that examples.run() would normally hide.
+            if hasattr(self.viewer, "hide_loading_splash"):
+                self.viewer.hide_loading_splash()
 
         self._setup_cuda_graph()
-        self._log_info(f"Newton Lite3 simulation loaded: {self.model_path}")
+        self._log_info(f"Newton {self.profile.name} simulation loaded: {self.model_path}")
         if self.scene_path is not None:
             self._log_info(f"Newton environment scene loaded: {self.scene_path}")
         if self.viewer is not None:
@@ -149,16 +207,20 @@ class NewtonSimulation:
         self.viewer.end_frame()
 
     def state_snapshot(self) -> SimulationState:
-        joint_q = warp_to_numpy(self.state_0.joint_q, FLOATING_BASE_Q_SIZE + NUM_DOFS)
-        joint_qd = warp_to_numpy(self.state_0.joint_qd, BASE_DOF_COUNT + NUM_DOFS)
+        joint_q = warp_to_numpy(self.state_0.joint_q, FLOATING_BASE_Q_SIZE + self.num_dofs)
+        joint_qd = warp_to_numpy(self.state_0.joint_qd, BASE_DOF_COUNT + self.num_dofs)
         quat_xyzw = joint_q[3:7]
+        self.imu.update(self.state_0)
         return SimulationState(
             position=joint_q[:3],
             quat_xyzw=quat_xyzw,
             linvel_body=rotate_world_to_body(quat_xyzw, joint_qd[:3]),
             angvel_body=rotate_world_to_body(quat_xyzw, joint_qd[3:6]),
-            joint_position=joint_q[FLOATING_BASE_Q_SIZE : FLOATING_BASE_Q_SIZE + NUM_DOFS],
-            joint_velocity=joint_qd[BASE_DOF_COUNT : BASE_DOF_COUNT + NUM_DOFS],
+            joint_position=joint_q[FLOATING_BASE_Q_SIZE : FLOATING_BASE_Q_SIZE + self.num_dofs],
+            joint_velocity=joint_qd[BASE_DOF_COUNT : BASE_DOF_COUNT + self.num_dofs],
+            # .numpy() aliases the sensor's persistent buffer on CPU devices, so copy out.
+            imu_acc=self.imu.accelerometer.numpy()[0].copy(),
+            imu_gyro=self.imu.gyroscope.numpy()[0].copy(),
         )
 
     def _setup_cuda_graph(self):
@@ -182,14 +244,6 @@ class NewtonSimulation:
             self.graph = None
             self.use_cuda_graph = False
             self._log_warn(f"CUDA graph capture failed; falling back to uncaptured Newton stepping: {exc}")
-
-    def _create_contacts(self):
-        try:
-            return newton.Contacts(self.solver.get_max_contact_count(), 0)
-        except Exception as exc:
-            self._log_debug(f"Newton contacts unavailable for viewer logging: {exc}")
-            return None
-
     def _build_newton_model(self, model_path: str, scene_path: str | None = None):
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Lite3 model description not found: {model_path}")
@@ -203,6 +257,7 @@ class NewtonSimulation:
         builder.default_shape_cfg.mu = 0.75
 
         scene_loaded = self._add_environment_scene(builder, scene_path, model_path)
+        scene_shape_count = builder.shape_count
 
         if Path(model_path).suffix.lower() == ".xml":
             builder.add_mjcf(
@@ -226,30 +281,57 @@ class NewtonSimulation:
             )
 
         self._init_sensor_visuals(builder)
-        builder.approximate_meshes("convex_hull")
+        # Hull robot meshes only. Environment meshes stay triangle colliders;
+        # convex-hulling a landscape wraps it in one blob.
+        # keep_visual_shapes: ray sensors (SensorTiledCamera) cast against render meshes,
+        # which plain convex-hulling would discard.
+        hull_indices = list(range(scene_shape_count, builder.shape_count))
+        if hull_indices:
+            builder.approximate_meshes("convex_hull", shape_indices=hull_indices, keep_visual_shapes=True)
         if not scene_loaded:
             builder.add_ground_plane()
 
-        builder.joint_q[:3] = [-5.0, 0.0, 0.43]
+        builder.joint_q[:3] = [-5.0, 0.0, self.profile.base_height]
         builder.joint_q[3:7] = [0.0, 0.0, 0.0, 1.0]
-        builder.joint_q[FLOATING_BASE_Q_SIZE : FLOATING_BASE_Q_SIZE + NUM_DOFS] = DEFAULT_JOINT_POS.tolist()
+        builder.joint_q[FLOATING_BASE_Q_SIZE : FLOATING_BASE_Q_SIZE + self.num_dofs] = self.profile.default_joint_pos.tolist()
 
-        for dof_index in range(NUM_DOFS):
+        for dof_index in range(self.num_dofs):
             target_index = BASE_DOF_COUNT + dof_index
-            builder.joint_target_ke[target_index] = DEFAULT_STIFFNESS
-            builder.joint_target_kd[target_index] = DEFAULT_DAMPING
+            # PD runs on CPU and enters via control.joint_f; solver-side servo stays off.
+            builder.joint_target_ke[target_index] = 0.0
+            builder.joint_target_kd[target_index] = 0.0
             builder.joint_armature[target_index] = ARMATURE
-            builder.joint_target_mode[target_index] = int(JointTargetMode.POSITION)
+            builder.joint_target_mode[target_index] = int(JointTargetMode.NONE)
 
         model = builder.finalize()
         model.set_gravity((0.0, 0.0, -9.81))
-        solver = newton.solvers.SolverMuJoCo(model, use_mujoco_cpu=False, solver="newton", nconmax=30, njmax=100)
+        # Matches the MJCF's <accelerometer>/<gyro> on imu_site, which Newton's MJCF importer
+        # ignores. Must precede model.state(): the sensor requests the body_qdd state attribute.
+        self.imu = SensorIMU(model, sites="*imu_site")
+        # Newton generates the contacts (use_mujoco_contacts=False) so the environment stays a
+        # triangle collider. MuJoCo convexifies every mesh geom it collides itself, which turns a
+        # lidar landscape into a ~300-vertex blob no matter what approximate_meshes() did.
+        collision_pipeline = newton.CollisionPipeline(model)
+        # MuJoCo transfers only min(rigid_contact_max, naconmax) contacts per step, so sizing
+        # nconmax to the pipeline's own cap means a Newton contact can never be silently dropped.
+        nconmax = collision_pipeline.rigid_contact_max
+        njmax = CONSTRAINT_ROWS_PER_CONTACT * (nconmax + BASE_DOF_COUNT + self.num_dofs)
+        solver = newton.solvers.SolverMuJoCo(
+            model,
+            use_mujoco_cpu=False,
+            solver="newton",
+            use_mujoco_contacts=False,
+            nconmax=nconmax,
+            njmax=njmax,
+        )
         state_0 = model.state()
         state_1 = model.state()
         control = model.control()
+        if control.joint_f is None:
+            raise RuntimeError("Newton Control.joint_f is unavailable; cannot apply joint torques")
         newton.eval_fk(model, state_0.joint_q, state_0.joint_qd, state_0)
         newton.eval_fk(model, state_1.joint_q, state_1.joint_qd, state_1)
-        return model, solver, state_0, state_1, control
+        return model, solver, collision_pipeline, state_0, state_1, control
 
     def _add_environment_scene(self, builder, scene_path: str | None, model_path: str) -> bool:
         if not scene_path:
@@ -288,45 +370,24 @@ class NewtonSimulation:
         self.state_0.clear_forces()
         if apply_viewer_forces and self.viewer is not None and hasattr(self.viewer, "apply_forces"):
             self.viewer.apply_forces(self.state_0)
-        self.solver.step(self.state_0, self.state_1, self.control, None, DT)
+        self.collision_pipeline.collide(self.state_0, self.contacts)
+        self.solver.step(self.state_0, self.state_1, self.control, self.contacts, DT)
         if keep_state_buffers:
             self.state_0.assign(self.state_1)
         else:
             self.state_0, self.state_1 = self.state_1, self.state_0
-        if self.contacts is not None:
-            self.solver.update_contacts(self.contacts, self.state_0)
 
     def _apply_control(self):
-        joint_q = warp_to_numpy(self.state_0.joint_q, FLOATING_BASE_Q_SIZE + NUM_DOFS)
-        joint_qd = warp_to_numpy(self.state_0.joint_qd, BASE_DOF_COUNT + NUM_DOFS)
-        q = joint_q[FLOATING_BASE_Q_SIZE : FLOATING_BASE_Q_SIZE + NUM_DOFS]
-        dq = joint_qd[BASE_DOF_COUNT : BASE_DOF_COUNT + NUM_DOFS]
-        self.last_tau = self.kp_cmd * (self.pos_cmd - q) + self.kd_cmd * (self.vel_cmd - dq) + self.tau_ff
+        joint_q = warp_to_numpy(self.state_0.joint_q, FLOATING_BASE_Q_SIZE + self.num_dofs)
+        joint_qd = warp_to_numpy(self.state_0.joint_qd, BASE_DOF_COUNT + self.num_dofs)
+        q = joint_q[FLOATING_BASE_Q_SIZE : FLOATING_BASE_Q_SIZE + self.num_dofs]
+        dq = joint_qd[BASE_DOF_COUNT : BASE_DOF_COUNT + self.num_dofs]
+        tau = self.kp_cmd * (self.pos_cmd - q) + self.kd_cmd * (self.vel_cmd - dq) + self.tau_ff
+        limit = self.profile.effort_limit
+        self.last_tau = np.clip(tau, -limit, limit)
 
-        self._copy_control_vector("joint_target_pos", self.pos_cmd, prepend_base=True)
-        self._copy_control_vector("joint_target_vel", self.vel_cmd, prepend_base=True)
-        if not self._copy_control_vector("joint_act", self.last_tau, prepend_base=True):
-            self._copy_control_vector("joint_tau", self.last_tau, prepend_base=True)
-
-    def _copy_control_vector(self, attribute: str, values: np.ndarray, prepend_base: bool) -> bool:
-        if not hasattr(self.control, attribute):
-            return False
-        target = getattr(self.control, attribute)
-        if prepend_base:
-            full_values = self._control_full_buffers.get(attribute)
-            if full_values is None:
-                full_values = np.zeros(BASE_DOF_COUNT + NUM_DOFS, dtype=np.float32)
-                self._control_full_buffers[attribute] = full_values
-            full_values[:BASE_DOF_COUNT] = 0.0
-            full_values[BASE_DOF_COUNT:] = values
-        else:
-            full_values = np.asarray(values, dtype=np.float32)
-        try:
-            wp.copy(target, wp.array(full_values, dtype=wp.float32, device=self.device))
-            return True
-        except Exception as exc:
-            self._log_debug(f"Unable to copy {attribute} into Newton control: {exc}")
-            return False
+        self._joint_f_buffer[BASE_DOF_COUNT:] = self.last_tau
+        self.control.joint_f.assign(self._joint_f_buffer)
 
     def _log_info(self, message: str):
         self.logger.info(message) if self.logger is not None else print(f"[INFO] {message}")

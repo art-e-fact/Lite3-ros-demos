@@ -1,0 +1,8 @@
+simulator: newton
+headless: false
+# Empty scene: Newton adds a default ground plane.
+scene: ""
+robot:
+  model: lite3
+rerun:
+  enabled: false

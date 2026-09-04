@@ -78,7 +78,7 @@ depends-on = ["setup"]
 
 
 [tasks.test-sim-sensors]
-cmd = "pytest src/simulation_package/test/test_simulation_sensors.py -vv -s"
+cmd = "pytest src/simulation_package/test/test_simulation_sensors.py src/simulation_package/test/test_newton_imu.py -vv -s"
 default-environment = "sim-test"
 depends-on = ["build"]
 
@@ -117,6 +117,41 @@ depends-on = ["build"]
 cmd = "mjpython -m simulation_package.start_simulation --config src/simulation_package/config/mujoco_procedural_railroad_m20.yaml"
 default-environment = "sim"
 depends-on = ["build"]
+
+[tasks.sim-newton]
+cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/newton_empty.yaml"
+default-environment = "sim"
+depends-on = ["build"]
+
+[tasks.sim-newton-m20]
+cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/newton_empty_m20.yaml"
+default-environment = "sim"
+depends-on = ["build"]
+
+[tasks.sim-newton-m20-karuizawa]
+cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/newton_karuizawa_m20.yaml"
+default-environment = "sim"
+depends-on = ["build"]
+
+[tasks.sim-newton-m20-karuizawa-gpu]
+args = [
+  { "arg" = "part", "default" = "part1", "choices" = ["part1", "part2", "part3"] },
+]
+cmd = [
+    "python", "-m", "simulation_package.start_simulation", 
+    "--config", "src/simulation_package/config/newton_karuizawa_m20.yaml",
+    "--set", "scene=hf://datasets/Artefacts/quadruped-environments@72049b46346cf9d14dc81bc5739de61c1af62b9a/mjcf/karuizawa/{{ part }}/karuizawa_{{ part }}.xml"
+]
+
+default-environment = "sim-gpu"
+depends-on = ["build"]
+
+# GPU (CUDA warp) variants of the Newton tasks.
+[tasks.sim-newton-gpu]
+depends-on = [{ task = "sim-newton", environment = "sim-gpu" }]
+
+[tasks.sim-newton-m20-gpu]
+depends-on = [{ task = "sim-newton-m20", environment = "sim-gpu" }]
 
 [tasks.nav-rail-follow]
 cmd = "ros2 launch rail_inspector rail_target_follow.launch.py"
@@ -178,7 +213,7 @@ scripts = ["rosbuild/sim/install/setup.sh"]
 LDFLAGS = "-L$CONDA_PREFIX/lib"
 
 [feature.sim.dependencies]
-newton-examples = ">=1.2.0,<2"
+newton-examples = ">=1.5.1,<2"
 mujoco = ">=3.8.1,<4"
 trimesh = ">=4.12.2,<5"
 imageio = ">=2.37.0,<3"
@@ -198,9 +233,18 @@ ros-kilted-nav-msgs = ">=5.5.2,<6"
 ros-kilted-sensor-msgs = ">=5.5.2,<6"
 ros-kilted-tf2-ros = ">=0.41.6,<0.42"
 ros-kilted-tf2-ros-py = ">=0.41.6,<0.42"
+huggingface_hub = ">=1.29.0,<2"
 
 [feature.sim.pypi-dependencies]
 perlin-noise = ">=1.14, <2"
+
+# Opt-in GPU feature: requires an NVIDIA driver, so keep it out of the base sim
+# env (CI runners have no GPU). Declares __cuda so the cuda warp-lang build solves.
+[feature.sim-cuda.system-requirements]
+cuda = "12"
+
+[feature.sim-cuda.target.linux-64.dependencies]
+warp-lang = { version = ">=1.17.0,<2", build = "cuda*" }
 
 [feature.rerun.pypi-dependencies]
 rerun-loader-mjcf = ">=1.0.1, <2"
@@ -274,6 +318,7 @@ python = ">=3.14.5,<3.15"
 
 [environments]
 sim = ["sim", "rerun"]
+sim-gpu = ["sim", "sim-cuda", "rerun"]
 sim-test = ["sim", "test", "rerun"]
 nav = ["nav", "rerun"]
 nav-test = ["nav", "test", "rerun"]

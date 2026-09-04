@@ -1,0 +1,13 @@
+simulator: newton
+headless: false
+scene: ""
+robot:
+  model: m20
+sensors:
+  robosense:
+    enabled: true
+    column_downsample: 1
+    channels: 48
+    columns: 224
+rerun:
+  enabled: false

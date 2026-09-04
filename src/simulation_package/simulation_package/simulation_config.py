@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import os
 from dataclasses import dataclass, field, fields, is_dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, get_type_hints
 
@@ -26,6 +27,10 @@ M20_ROBOT_DESCRIPTION_URI = "package://simulation_package/assets/m20_mjcf/mjcf/M
 DEFAULT_USD_URI = "package://simulation_package/assets/Lite3_usd/Lite3.usd"
 PROCEDURAL_SCENE_PREFIX = "procedural://"
 SUPPORTED_PROCEDURAL_SCENES = {"blocks", "railroad"}
+HF_URI_PREFIX = "hf://"
+# Hub web URLs are accepted too, so a link copied from the browser works as-is.
+HF_URI_PREFIXES = (HF_URI_PREFIX, "https://huggingface.co/", "https://hf.co/")
+HF_DOWNLOADABLE_REPO_TYPES = {"model", "dataset", "space"}
 
 ROBOT_PRESETS: dict[str, dict[str, str | float]] = {
 	"lite3": {
@@ -287,8 +292,6 @@ class SimulationConfig:
 		_validate_positive(errors, "sensors.mid360.samples_per_scan", sensors.mid360.samples_per_scan)
 		_validate_positive(errors, "sensors.mid360.downsample", sensors.mid360.downsample)
 		_validate_range(errors, "sensors.mid360", sensors.mid360.range_min, sensors.mid360.range_max)
-		if sensors.robosense.enabled and simulator != "mujoco":
-			errors.append("sensors.robosense is only supported by the MuJoCo simulator")
 		_validate_positive(errors, "sensors.robosense.frequency_hz", sensors.robosense.frequency_hz)
 		_validate_positive(errors, "sensors.robosense.channels", sensors.robosense.channels)
 		_validate_positive(errors, "sensors.robosense.columns", sensors.robosense.columns)
@@ -369,8 +372,47 @@ def _resource_search_roots() -> list[Path]:
 	return bases
 
 
+@lru_cache(maxsize=None)
+def _resolve_hf_uri(raw: str) -> Path:
+	"""Download a Hugging Face resource and return its local path.
+
+	Accepts the canonical hf:// form as well as Hub web URLs, for example
+	hf://datasets/art-e-fact/karuizawa-worlds@abc1234/karuizawa/part1/scene.xml
+	"""
+	try:
+		from huggingface_hub import parse_hf_uri, snapshot_download
+	except ImportError as exc:  # pragma: no cover - depends on environment
+		raise RuntimeError(
+			f"Resolving '{raw}' requires the huggingface_hub package. "
+			"Install it in the simulation environment to use hf:// resources."
+		) from exc
+
+	uri = parse_hf_uri(raw)
+	if uri.type not in HF_DOWNLOADABLE_REPO_TYPES:
+		raise ValueError(
+			f"Unsupported Hugging Face URI '{raw}', expected one of "
+			f"{sorted(HF_DOWNLOADABLE_REPO_TYPES)}, got '{uri.type}'"
+		)
+	# Scene XMLs reference their meshes relative to their own directory, so fetch
+	# the whole containing folder instead of just the requested file.
+	parent = Path(uri.path_in_repo).parent
+	allow_patterns = None if parent == Path(".") else [f"{parent.as_posix()}/*"]
+	snapshot = snapshot_download(
+		repo_id=uri.id,
+		repo_type=uri.type,
+		revision=uri.revision,
+		allow_patterns=allow_patterns,
+	)
+	# Deliberately not resolve(): entries in the snapshot directory are symlinks
+	# into the content-addressed blob store, where files carry no extension and
+	# have no siblings. The scene must keep its suffix and stay next to its meshes.
+	return Path(snapshot) / uri.path_in_repo
+
+
 def resolve_path(path_value: str | os.PathLike[str], must_exist: bool = False) -> Path:
 	raw = str(path_value).strip()
+	if raw.startswith(HF_URI_PREFIXES):
+		return _resolve_hf_uri(raw)
 	if raw.startswith("package://"):
 		package_and_path = raw[len("package://") :]
 		package, _, rel = package_and_path.partition("/")
