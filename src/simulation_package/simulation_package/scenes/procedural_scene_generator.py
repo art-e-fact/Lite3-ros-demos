@@ -341,25 +341,62 @@ def _build_edge_cover_mission(nodes: np.ndarray, edges: Sequence[Tuple[int, int]
     return trail if trail else [start_idx]
 
 
-def _add_obstacle_geom(
-    worldbody: mujoco.MjsBody,
-    name: str,
-    geom_type: int,
-    pos: Tuple[float, float, float],
-    size: Tuple[float, float, float],
-    rgba: Tuple[float, float, float, float],
-    yaw: float,
-) -> None:
+@dataclass(frozen=True)
+class ObstaclePrimitive:
+    """One procedurally placed obstacle, described without any physics engine.
+
+    Attributes:
+        name: Unique geom name.
+        shape: ``"box"``, ``"cylinder"`` or ``"capsule"``.
+        pos: World position of the primitive's centre.
+        size: MuJoCo-style size triple. Box: half-extents (hx, hy, hz).
+            Cylinder/capsule: (radius, half_height, 0).
+        rgba: Display colour.
+        yaw: Rotation about +Z in radians (ignored for capsules, matching MuJoCo).
+    """
+
+    name: str
+    shape: str
+    pos: Tuple[float, float, float]
+    size: Tuple[float, float, float]
+    rgba: Tuple[float, float, float, float]
+    yaw: float
+
+
+@dataclass
+class BlocksSceneGeometry:
+    """Backend-neutral description of the ``procedural://blocks`` scene."""
+
+    obstacles: List[ObstaclePrimitive]
+    floor_half_extent: float
+    node_xy: List[List[float]]
+    edges: List[Tuple[int, int]]
+    mission_node_idx: List[int]
+    mission_xy: List[List[float]]
+    robot_start_pose: Tuple[float, float, float]
+    seed: int
+
+
+_MJ_GEOM_TYPES = {
+    "box": mujoco.mjtGeom.mjGEOM_BOX,
+    "cylinder": mujoco.mjtGeom.mjGEOM_CYLINDER,
+    "capsule": mujoco.mjtGeom.mjGEOM_CAPSULE,
+}
+
+
+def _add_obstacle_geom(worldbody: mujoco.MjsBody, obstacle: ObstaclePrimitive) -> None:
     """Add one obstacle geom with shared collision/visual defaults."""
+    geom_type = _MJ_GEOM_TYPES[obstacle.shape]
     geom = worldbody.add_geom()
-    geom.name = name
+    geom.name = obstacle.name
     geom.type = geom_type
-    geom.pos = np.array(pos, dtype=np.float64)
-    geom.size = np.array(size, dtype=np.float64)
-    geom.rgba = np.array(rgba, dtype=np.float32)
+    geom.pos = np.array(obstacle.pos, dtype=np.float64)
+    geom.size = np.array(obstacle.size, dtype=np.float64)
+    geom.rgba = np.array(obstacle.rgba, dtype=np.float32)
     geom.contype = 1
     geom.conaffinity = 1
     if geom_type in (mujoco.mjtGeom.mjGEOM_BOX, mujoco.mjtGeom.mjGEOM_CYLINDER):
+        yaw = obstacle.yaw
         geom.quat = np.array([math.cos(0.5 * yaw), 0.0, 0.0, math.sin(0.5 * yaw)], dtype=np.float64)
 
 
@@ -393,19 +430,16 @@ def _add_overhead_light(worldbody: mujoco.MjsBody, cfg: GeneratorConfig) -> None
     light.dir = np.array(cfg.light_dir, dtype=np.float64)
 
 
-def _populate_obstacles(
-    worldbody: mujoco.MjsBody,
+def _sample_obstacles(
     rng: np.random.Generator,
     cfg: GeneratorConfig,
-    robot_start_xy: Tuple[float, float],
-) -> Tuple[np.ndarray, List[Tuple[int, int]], int]:
-    """Populate random obstacles while preserving free-space corridors."""
-    nodes = _sample_nodes(rng, cfg, robot_start_xy)
-    edges = _build_planar_edges(nodes, cfg)
-
-    obstacle_idx = 0
+    nodes: np.ndarray,
+    edges: Sequence[Tuple[int, int]],
+) -> List[ObstaclePrimitive]:
+    """Sample random obstacle primitives while preserving free-space corridors."""
+    obstacles: List[ObstaclePrimitive] = []
     attempts = 0
-    while obstacle_idx < cfg.obstacle_count and attempts < cfg.obstacle_sample_budget:
+    while len(obstacles) < cfg.obstacle_count and attempts < cfg.obstacle_sample_budget:
         attempts += 1
         x = float(rng.uniform(cfg.bounds_x[0], cfg.bounds_x[1]))
         y = float(rng.uniform(cfg.bounds_y[0], cfg.bounds_y[1]))
@@ -416,48 +450,82 @@ def _populate_obstacles(
         geom_pick = int(rng.integers(0, 3))
         rgba = PASTEL_RGBA[int(rng.integers(0, len(PASTEL_RGBA)))]
         yaw = float(rng.uniform(-math.pi, math.pi))
+        index = len(obstacles)
 
         if geom_pick == 0:
             sx = float(rng.uniform(0.12, 0.35))
             sy = float(rng.uniform(0.12, 0.35))
             sz = float(rng.uniform(0.22, 0.5))
-            _add_obstacle_geom(
-                worldbody,
-                f"proc_box_{obstacle_idx}",
-                mujoco.mjtGeom.mjGEOM_BOX,
-                (x, y, sz),
-                (sx, sy, sz),
-                rgba,
-                yaw,
+            obstacles.append(
+                ObstaclePrimitive(f"proc_box_{index}", "box", (x, y, sz), (sx, sy, sz), rgba, yaw)
             )
         elif geom_pick == 1:
             radius = float(rng.uniform(0.08, 0.22))
             half_h = float(rng.uniform(0.22, 0.45))
-            _add_obstacle_geom(
-                worldbody,
-                f"proc_cyl_{obstacle_idx}",
-                mujoco.mjtGeom.mjGEOM_CYLINDER,
-                (x, y, half_h),
-                (radius, half_h, 0.0),
-                rgba,
-                yaw,
+            obstacles.append(
+                ObstaclePrimitive(
+                    f"proc_cyl_{index}", "cylinder", (x, y, half_h), (radius, half_h, 0.0), rgba, yaw
+                )
             )
         else:
             radius = float(rng.uniform(0.09, 0.24))
             half_h = float(rng.uniform(0.10, 0.35))
-            _add_obstacle_geom(
-                worldbody,
-                f"proc_capsule_{obstacle_idx}",
-                mujoco.mjtGeom.mjGEOM_CAPSULE,
-                (x, y, radius + half_h),
-                (radius, half_h, 0.0),
-                rgba,
-                yaw,
+            obstacles.append(
+                ObstaclePrimitive(
+                    f"proc_capsule_{index}",
+                    "capsule",
+                    (x, y, radius + half_h),
+                    (radius, half_h, 0.0),
+                    rgba,
+                    yaw,
+                )
             )
 
-        obstacle_idx += 1
+    return obstacles
 
-    return nodes, edges, obstacle_idx
+
+def build_blocks_geometry(
+    robot_start_xy: Tuple[float, float],
+    seed: int,
+    config: GeneratorConfig | None = None,
+) -> BlocksSceneGeometry:
+    """Sample the ``procedural://blocks`` world without touching a physics engine.
+
+    This is the engine-independent entry point: MuJoCo goes on through
+    :func:`build_procedural_spec`, Newton consumes the returned geometry directly.
+    """
+    cfg = config or GeneratorConfig()
+    rng = np.random.default_rng(seed)
+
+    nodes = _sample_nodes(rng, cfg, robot_start_xy)
+    edges = _build_planar_edges(nodes, cfg)
+    obstacles = _sample_obstacles(rng, cfg, nodes, edges)
+    mission_node_idx = _build_edge_cover_mission(nodes, edges, start_idx=0)
+
+    return BlocksSceneGeometry(
+        obstacles=obstacles,
+        floor_half_extent=cfg.floor_half_extent,
+        node_xy=[[float(p[0]), float(p[1])] for p in nodes],
+        edges=list(edges),
+        mission_node_idx=mission_node_idx,
+        mission_xy=[[float(nodes[idx][0]), float(nodes[idx][1])] for idx in mission_node_idx],
+        robot_start_pose=(float(robot_start_xy[0]), float(robot_start_xy[1]), 0.0),
+        seed=seed,
+    )
+
+
+def blocks_scene_meta(geometry: BlocksSceneGeometry) -> dict:
+    """Common ``scene_meta`` payload shared by the MuJoCo and Newton runners."""
+    return {
+        "seed": geometry.seed,
+        "nodes": len(geometry.node_xy),
+        "edges": len(geometry.edges),
+        "obstacles": len(geometry.obstacles),
+        "node_xy": geometry.node_xy,
+        "mission_node_idx": geometry.mission_node_idx,
+        "mission_xy": geometry.mission_xy,
+        "robot_start_pose": list(geometry.robot_start_pose),
+    }
 
 
 def build_procedural_spec(
@@ -484,28 +552,16 @@ def build_procedural_spec(
         (spec, meta) where meta reports seed and counts.
     """
     cfg = config or GeneratorConfig()
-    rng = np.random.default_rng(seed)
+    geometry = build_blocks_geometry(robot_start_xy, seed, cfg)
 
     spec = mujoco.MjSpec.from_file(robot_xml_path)
     worldbody = spec.worldbody
 
     _add_ground_plane(worldbody, cfg)
     _add_overhead_light(worldbody, cfg)
-    nodes, edges, obstacle_count = _populate_obstacles(
-        worldbody, rng, cfg, robot_start_xy
-    )
-    mission_node_idx = _build_edge_cover_mission(nodes, edges, start_idx=0)
-    node_xy = [[float(p[0]), float(p[1])] for p in nodes]
-    mission_xy = [[float(nodes[idx][0]), float(nodes[idx][1])] for idx in mission_node_idx]
+    for obstacle in geometry.obstacles:
+        _add_obstacle_geom(worldbody, obstacle)
 
-    meta = {
-        "seed": seed,
-        "nodes": len(nodes),
-        "edges": len(edges),
-        "obstacles": obstacle_count,
-        "node_xy": node_xy,
-        "mission_node_idx": mission_node_idx,
-        "mission_xy": mission_xy,
-        "robot_start_pose": [float(robot_start_xy[0]), float(robot_start_xy[1]), 0.0],
-    }
+    meta = blocks_scene_meta(geometry)
+    meta["blocks_geometry"] = geometry
     return spec, meta

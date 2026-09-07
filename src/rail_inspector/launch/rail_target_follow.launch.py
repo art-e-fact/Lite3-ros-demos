@@ -59,6 +59,7 @@ def launch_setup(context, *args, **kwargs):
                 name='rl_deploy',
                 output='screen',
                 arguments=deploy_args,
+                parameters=[{'use_sim_time': True}],
             )
         )
 

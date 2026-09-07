@@ -9,10 +9,12 @@ from newton._src.sensors.sensor_tiled_camera import SensorTiledCamera
 from sensor_msgs.msg import PointCloud2
 
 from sensors.common.pointcloud import make_xyz_pointcloud
-from sensors.common.transforms import make_transform, quat_from_matrix
+from sensors.common.transforms import make_transform, quat_from_matrix, sim_time_stamp
 from sensors.newton.geometry import (
     camera_transforms,
+    filter_self_hits,
     find_site_index,
+    robot_shape_mask,
     site_local_pose,
     site_world_pose,
 )
@@ -48,8 +50,7 @@ class NewtonRobosenseLidarSensor:
         self.frame_id = unit.frame_id
 
         self.site_index = find_site_index(model, unit.site_name)
-        self.shape_body = model.shape_body.numpy()
-        self.body_id = int(self.shape_body[self.site_index])
+        self.self_shape = robot_shape_mask(model, self.site_index)
 
         self.local_dirs = _spinner_dirs(config)
         self.rays = rays_from_dirs(self.local_dirs)
@@ -79,13 +80,10 @@ class NewtonRobosenseLidarSensor:
         shape_indices = self.shape_index_image.numpy()[0, 0, 0]
         valid = (ranges >= self.config.range_min) & (ranges <= self.config.range_max)
 
-        valid_shape = shape_indices < len(self.shape_body)
-        hit_bodies = np.full(shape_indices.shape, -9999, dtype=np.int32)
-        hit_bodies[valid_shape] = self.shape_body[shape_indices[valid_shape].astype(np.int64)]
-        valid &= hit_bodies != self.body_id
+        valid &= filter_self_hits(self.self_shape, shape_indices)
 
         points = (self.local_dirs[valid] * ranges[valid, None]).astype(np.float32)
-        self.pub.publish(make_xyz_pointcloud(points, self.node.get_clock().now().to_msg(), self.frame_id))
+        self.pub.publish(make_xyz_pointcloud(points, sim_time_stamp(timestamp), self.frame_id))
 
     def get_static_transform(self, stamp, parent_frame: str = "base_link"):
         site_pos_local, site_rot = site_local_pose(self.model, self.site_index)
@@ -125,6 +123,13 @@ class NewtonRobosenseLidarSuite:
             (step_count + index * self.step_interval // 2) % self.step_interval == 0
             for index in range(len(self.lidars))
         )
+
+    def warmup(self, state, timestamp: float):
+        """Render every unit once, ignoring the staggered schedule, to compile kernels."""
+        if not self.enabled:
+            return
+        for lidar in self.lidars:
+            lidar.update(state, timestamp)
 
     def get_static_transforms(self, stamp):
         if not self.enabled:

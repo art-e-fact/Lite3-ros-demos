@@ -20,7 +20,7 @@ The Karuizawa scene is pinned to a specific dataset commit in `pixi.toml`. To pi
 new world uploads, update that revision (or drop `@<revision>` to track `main`).
 
 ```bash
-pixi run sim-newton-m20-karuizawa-gpu part2
+pixi run sim-newton-m20-karuizawa part2
 ```
 
 No Git LFS setup is needed to *use* these assets. It is only relevant when publishing

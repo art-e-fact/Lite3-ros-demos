@@ -1,0 +1,19 @@
+simulator: newton
+headless: false
+scene: procedural://railroad
+procedural_env_seed: 123
+robot:
+  model: m20
+sensors:
+  mid360:
+    enabled: false
+  robosense:
+    enabled: true
+    column_downsample: 1
+    channels: 48 #96
+    columns: 224 #448
+  realsense:
+    enable_depth: false
+    enable_color: false
+rerun:
+  enabled: false

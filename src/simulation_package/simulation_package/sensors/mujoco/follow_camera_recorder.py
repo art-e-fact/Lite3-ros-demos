@@ -64,7 +64,7 @@ class FollowCameraRecorder:
             fps=self.fps,
             codec="libx264",
             quality=self.config.quality,
-            macro_block_size=16,
+            macro_block_size=8,
         )
         self.closed = False
         node.get_logger().info(
