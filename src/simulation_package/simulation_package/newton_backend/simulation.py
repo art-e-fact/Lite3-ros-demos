@@ -330,12 +330,9 @@ class NewtonSimulation:
         if not wp.is_mempool_enabled(self.device):
             self._log_info("CUDA graph disabled because the Warp memory pool is not enabled.")
             return
-        if self.viewer is not None:
-            self._log_info("CUDA graph disabled while the interactive Newton viewer is enabled.")
-            return
         try:
             with wp.ScopedCapture() as capture:
-                self._simulate_physics_step(apply_viewer_forces=False, keep_state_buffers=True)
+                self._simulate_physics_step(apply_viewer_forces=True, keep_state_buffers=True)
             self.graph = capture.graph
             self.use_cuda_graph = True
             self._log_info("Using CUDA graph for Newton physics stepping.")
