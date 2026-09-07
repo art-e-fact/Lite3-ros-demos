@@ -276,6 +276,8 @@ class SimControlHarness:
         self._last_xy: tuple[float, float] | None = None
         self._first_clock_sec: float | None = None
         self._last_clock_sec: float | None = None
+        self._first_clock_wall_time: float | None = None
+        self._last_clock_wall_time: float | None = None
         self._first_odom_wall_time: float | None = None
         self._last_moved_wall_time: float | None = None
         self._stop_reason: StopReason | None = None
@@ -389,10 +391,13 @@ class SimControlHarness:
 
     def _clock_callback(self, msg: Clock) -> None:
         stamp_sec = float(msg.clock.sec) + float(msg.clock.nanosec) * 1e-9
+        now = time.monotonic()
         with self._lock:
             if self._first_clock_sec is None:
                 self._first_clock_sec = stamp_sec
+                self._first_clock_wall_time = now
             self._last_clock_sec = stamp_sec
+            self._last_clock_wall_time = now
 
     def _spin_loop(self) -> None:
         while not self._stop_event.is_set():
@@ -477,6 +482,7 @@ class SimControlHarness:
         self._stop_event.set()
         if self._spin_thread is not None:
             self._spin_thread.join(timeout=5.0)
+        self._log_real_time_factor()
         if self._executor is not None:
             self._executor.shutdown(timeout_sec=0.0)
         if self._node is not None:
@@ -497,6 +503,19 @@ class SimControlHarness:
         with self._lock:
             if self._stop_reason is None:
                 self._stop_reason = StopReason.STOPPED
+
+    def _log_real_time_factor(self) -> None:
+        """Report sim seconds per wall second between the first and last ``/clock``."""
+        with self._lock:
+            if self._first_clock_wall_time is None or self._node is None:
+                return
+            sim_sec = self._last_clock_sec - self._first_clock_sec
+            wall_sec = self._last_clock_wall_time - self._first_clock_wall_time
+        rtf = sim_sec / wall_sec if wall_sec > 0 else float('nan')
+        self._node.get_logger().info(
+            f'simulator ran {sim_sec:.1f} sim s in {wall_sec:.1f} wall s '
+            f'(real-time factor {rtf:.3f}), {self.message_count} odom messages'
+        )
 
     def kill(self) -> None:
         """Immediately kill all process groups with SIGKILL."""
