@@ -21,6 +21,7 @@ KILL_TIMEOUT_SEC = 5.0
 _PROCESS_GROUPS: set[int] = set()
 _PROCESS_GROUP_IDS: dict[int, int] = {}
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = PACKAGE_ROOT.parents[1]
 
 
 @dataclass(frozen=True)
@@ -125,16 +126,26 @@ def _write_config(tmp_path: Path, simulator: str, sensor: str, topics: dict[str,
     return path
 
 
-def _start_simulation(config_path: Path, log_path: Path, domain_id: str):
+def _start_simulation(config_path: Path, log_path: Path, domain_id: str, simulator: str):
     env = os.environ.copy()
     env["ROS_DOMAIN_ID"] = domain_id
     env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONPATH"] = os.pathsep.join(
         part for part in [str(PACKAGE_ROOT), env.get("PYTHONPATH", "")] if part
     )
+    # Run the simulator in the sim / sim-gpu pixi env like sim_control_harness does: it
+    # picks the GPU build when available, and on macOS only the env that built drdds can
+    # dlopen its typesupport dylibs (sim-test cannot).
+    sim_env = subprocess.run(
+        [str(REPO_ROOT / "scripts" / "sim_pixi_env.sh")], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    sim_python = "mjpython" if (simulator == "mujoco" and sys.platform == "darwin") else "python"
     log_file = log_path.open("w", encoding="utf-8")
     process = subprocess.Popen(
-        [sys.executable, "-m", "simulation_package.start_simulation", "--config", str(config_path)],
+        [
+            os.environ.get("PIXI_EXE", "pixi"), "run", "-e", sim_env,
+            sim_python, "-m", "simulation_package.start_simulation", "--config", str(config_path),
+        ],
         stdout=log_file,
         stderr=subprocess.STDOUT,
         text=True,
@@ -244,7 +255,7 @@ def _run_sensor_test(tmp_path, simulator: str, sensor: str):
     node = rclpy.create_node(f"test_{simulator}_simulation_sensors", context=context)
     executor = SingleThreadedExecutor(context=context)
     executor.add_node(node)
-    process, log_file = _start_simulation(config_path, log_path, domain_id)
+    process, log_file = _start_simulation(config_path, log_path, domain_id, simulator)
 
     try:
         _wait_for_topics(node, executor, process, log_path, _expected_topics(sensor, topics))
