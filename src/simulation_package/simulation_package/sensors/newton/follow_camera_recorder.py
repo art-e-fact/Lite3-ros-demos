@@ -7,7 +7,10 @@ Frames come from Newton's GL viewer via ``ViewerGL.get_frame`` so the video look
 like the Newton screen, headless or not (like MuJoCo's EGL recorder):
 
 * ``headless: false``: the interactive window, at its own resolution; its camera
-  is driven to the follow pose while recording.
+  is driven to the follow pose while recording. The mp4 is locked to that
+  resolution at start; if the window's framebuffer later changes size (e.g. a
+  macOS Retina backing-scale change when the window moves between displays),
+  later frames are resampled back to the locked size instead of crashing.
 * ``headless: true``: a private EGL-backed ``ViewerGL`` at ``width`` x ``height``
   that needs no display server.  The physics loop never sees it, so the CUDA
   graph stays enabled.
@@ -35,6 +38,7 @@ from pathlib import Path
 import imageio.v2 as imageio
 from newton._src.sensors.sensor_tiled_camera import SensorTiledCamera
 import numpy as np
+from PIL import Image
 import warp as wp
 
 from sensors.newton.geometry import camera_transforms
@@ -141,6 +145,8 @@ class NewtonFollowCameraRecorder:
             )
             source = "Warp raytracer"
 
+        self.frame_size = (height, width)  # locked (H, W); later frames are resampled to this
+        self._resize_warned = False
         self.writer = imageio.get_writer(
             self.video_path,
             fps=self.fps,
@@ -194,6 +200,17 @@ class NewtonFollowCameraRecorder:
         frame = self.render(state, refit=refit, timestamp=timestamp)
         if frame is None:
             return
+        if frame.shape[:2] != self.frame_size:
+            # The viewer's framebuffer resized mid-run (e.g. a macOS Retina scale change);
+            # resample back to the size the writer was opened with instead of crashing.
+            h, w = self.frame_size
+            if not self._resize_warned:
+                self._resize_warned = True
+                self._log_info(
+                    f"Newton follow camera frame size changed to "
+                    f"{frame.shape[1]}x{frame.shape[0]}; resampling to {w}x{h}"
+                )
+            frame = np.asarray(Image.fromarray(frame).resize((w, h), Image.BILINEAR))
         self.writer.append_data(frame)
         self.frame_count += 1
 

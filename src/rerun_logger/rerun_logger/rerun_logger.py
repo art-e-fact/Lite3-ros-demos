@@ -347,7 +347,7 @@ def main() -> None:
         pass
     finally:
         rerun_subscriber.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":
