@@ -78,7 +78,7 @@ depends-on = ["setup"]
 
 
 [tasks.test-sim-sensors]
-cmd = "pytest src/simulation_package/test/test_simulation_sensors.py -vv -s"
+cmd = "pytest src/simulation_package/test/test_simulation_sensors.py src/simulation_package/test/test_newton_imu.py -vv -s"
 default-environment = "sim-test"
 depends-on = ["build"]
 
@@ -87,34 +87,140 @@ cmd = "pytest src/rail_inspector/test/test_sim_rail_target_follow_distance.py -v
 default-environment = "nav-test"
 depends-on = ["build"]
 
+[tasks.test-rail-follow-mujoco]
+cmd = "pytest src/rail_inspector/test/test_sim_rail_target_follow_distance.py --simulator mujoco -vv -s"
+default-environment = "nav-test"
+depends-on = ["build"]
+
+# Tests auto-select sim-gpu when an NVIDIA GPU is detected (scripts/sim_pixi_env.sh).
+# Forces the CPU warp build.
+[tasks.test-rail-follow-cpu]
+cmd = "pytest src/rail_inspector/test/test_sim_rail_target_follow_distance.py -vv -s"
+default-environment = "nav-test"
+depends-on = ["build"]
+env = { SIM_PIXI_ENV = "sim" }
+
 [tasks.test-rerun-recording]
 cmd = "pytest src/rail_inspector/test/test_rerun_recording.py -vv -s"
 default-environment = "nav-test"
 depends-on = ["build"]
+
+[tasks.test-rerun-recording-mujoco]
+cmd = "pytest src/rail_inspector/test/test_rerun_recording.py --simulator mujoco -vv -s"
+default-environment = "nav-test"
+depends-on = ["build"]
+
+# Tests auto-select sim-gpu when an NVIDIA GPU is detected (scripts/sim_pixi_env.sh).
+# Forces the CPU warp build.
+[tasks.test-rerun-recording-cpu]
+cmd = "pytest src/rail_inspector/test/test_rerun_recording.py -vv -s"
+default-environment = "nav-test"
+depends-on = ["build"]
+env = { SIM_PIXI_ENV = "sim" }
 
 [tasks.test-rerun-recording-m20]
 cmd = "pytest src/rail_inspector/test/test_rerun_recording.py --robot m20 -vv -s"
 default-environment = "nav-test"
 depends-on = ["build"]
 
+[tasks.test-rerun-recording-m20-mujoco]
+cmd = "pytest src/rail_inspector/test/test_rerun_recording.py --robot m20 --simulator mujoco -vv -s"
+default-environment = "nav-test"
+depends-on = ["build"]
+
+# Tests auto-select sim-gpu when an NVIDIA GPU is detected (scripts/sim_pixi_env.sh).
+# Forces the CPU warp build.
+[tasks.test-rerun-recording-m20-cpu]
+cmd = "pytest src/rail_inspector/test/test_rerun_recording.py --robot m20 -vv -s"
+default-environment = "nav-test"
+depends-on = ["build"]
+env = { SIM_PIXI_ENV = "sim" }
+
+# Newton tasks pick sim-gpu when scripts/sim_pixi_env.sh detects an NVIDIA GPU, else sim;
+# -cpu variants force the CPU Warp build; MuJoCo tasks always run in sim.
 [tasks.sim-rail-follow]
+cmd = "pixi run -e $(scripts/sim_pixi_env.sh) python -m simulation_package.start_simulation --config src/simulation_package/config/newton_procedural_railroad.yaml"
+default-environment = "default"
+depends-on = ["build"]
+
+[tasks.sim-rail-follow-cpu]
+cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/newton_procedural_railroad.yaml"
+default-environment = "sim"
+depends-on = ["build"]
+
+[tasks.sim-rail-follow-m20]
+cmd = "pixi run -e $(scripts/sim_pixi_env.sh) python -m simulation_package.start_simulation --config src/simulation_package/config/newton_procedural_railroad_m20.yaml"
+default-environment = "default"
+depends-on = ["build"]
+
+[tasks.sim-rail-follow-m20-cpu]
+cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/newton_procedural_railroad_m20.yaml"
+default-environment = "sim"
+depends-on = ["build"]
+
+[tasks.sim-rail-follow-mujoco]
 cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/mujoco_procedural_railroad.yaml"
 default-environment = "sim"
 depends-on = ["build"]
 
 # macOS requires mjpython
-[target.osx-arm64.tasks.sim-rail-follow]
+[target.osx-arm64.tasks.sim-rail-follow-mujoco]
 cmd = "mjpython -m simulation_package.start_simulation --config src/simulation_package/config/mujoco_procedural_railroad.yaml"
 default-environment = "sim"
 depends-on = ["build"]
 
-[tasks.sim-rail-follow-m20]
+[tasks.sim-rail-follow-m20-mujoco]
 cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/mujoco_procedural_railroad_m20.yaml"
 default-environment = "sim"
 depends-on = ["build"]
 
-[target.osx-arm64.tasks.sim-rail-follow-m20]
+[target.osx-arm64.tasks.sim-rail-follow-m20-mujoco]
 cmd = "mjpython -m simulation_package.start_simulation --config src/simulation_package/config/mujoco_procedural_railroad_m20.yaml"
+default-environment = "sim"
+depends-on = ["build"]
+
+[tasks.sim-newton]
+cmd = "pixi run -e $(scripts/sim_pixi_env.sh) python -m simulation_package.start_simulation --config src/simulation_package/config/newton_empty.yaml"
+default-environment = "default"
+depends-on = ["build"]
+
+[tasks.sim-newton-cpu]
+cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/newton_empty.yaml"
+default-environment = "sim"
+depends-on = ["build"]
+
+[tasks.sim-newton-m20]
+cmd = "pixi run -e $(scripts/sim_pixi_env.sh) python -m simulation_package.start_simulation --config src/simulation_package/config/newton_empty_m20.yaml"
+default-environment = "default"
+depends-on = ["build"]
+
+[tasks.sim-newton-m20-cpu]
+cmd = "python -m simulation_package.start_simulation --config src/simulation_package/config/newton_empty_m20.yaml"
+default-environment = "sim"
+depends-on = ["build"]
+
+[tasks.sim-newton-m20-karuizawa]
+args = [
+  { "arg" = "part", "default" = "part1", "choices" = ["part1", "part2", "part3"] },
+]
+cmd = [
+    "pixi", "run", "-e", "$(scripts/sim_pixi_env.sh)",
+    "python", "-m", "simulation_package.start_simulation",
+    "--config", "src/simulation_package/config/newton_karuizawa_m20.yaml",
+    "--set", "scene=hf://datasets/Artefacts/quadruped-environments@72049b46346cf9d14dc81bc5739de61c1af62b9a/mjcf/karuizawa/{{ part }}/karuizawa_{{ part }}.xml"
+]
+default-environment = "default"
+depends-on = ["build"]
+
+[tasks.sim-newton-m20-karuizawa-cpu]
+args = [
+  { "arg" = "part", "default" = "part1", "choices" = ["part1", "part2", "part3"] },
+]
+cmd = [
+    "python", "-m", "simulation_package.start_simulation",
+    "--config", "src/simulation_package/config/newton_karuizawa_m20.yaml",
+    "--set", "scene=hf://datasets/Artefacts/quadruped-environments@72049b46346cf9d14dc81bc5739de61c1af62b9a/mjcf/karuizawa/{{ part }}/karuizawa_{{ part }}.xml"
+]
 default-environment = "sim"
 depends-on = ["build"]
 
@@ -178,7 +284,7 @@ scripts = ["rosbuild/sim/install/setup.sh"]
 LDFLAGS = "-L$CONDA_PREFIX/lib"
 
 [feature.sim.dependencies]
-newton-examples = ">=1.2.0,<2"
+newton-examples = ">=1.5.1,<2"
 mujoco = ">=3.8.1,<4"
 trimesh = ">=4.12.2,<5"
 imageio = ">=2.37.0,<3"
@@ -198,9 +304,18 @@ ros-kilted-nav-msgs = ">=5.5.2,<6"
 ros-kilted-sensor-msgs = ">=5.5.2,<6"
 ros-kilted-tf2-ros = ">=0.41.6,<0.42"
 ros-kilted-tf2-ros-py = ">=0.41.6,<0.42"
+huggingface_hub = ">=1.29.0,<2"
 
 [feature.sim.pypi-dependencies]
 perlin-noise = ">=1.14, <2"
+
+# Opt-in GPU feature: requires an NVIDIA driver, so keep it out of the base sim
+# env (CI runners have no GPU). Declares __cuda so the cuda warp-lang build solves.
+[feature.sim-cuda.system-requirements]
+cuda = "12"
+
+[feature.sim-cuda.target.linux-64.dependencies]
+warp-lang = { version = ">=1.17.0,<2", build = "cuda*" }
 
 [feature.rerun.pypi-dependencies]
 rerun-loader-mjcf = ">=1.0.1, <2"
@@ -274,6 +389,7 @@ python = ">=3.14.5,<3.15"
 
 [environments]
 sim = ["sim", "rerun"]
+sim-gpu = ["sim", "sim-cuda", "rerun"]
 sim-test = ["sim", "test", "rerun"]
 nav = ["nav", "rerun"]
 nav-test = ["nav", "test", "rerun"]

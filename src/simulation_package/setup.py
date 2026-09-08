@@ -49,7 +49,7 @@ setup(
             'simulation_node = simulation_package.simulation_node:main',
             'start_simulation = simulation_package.start_simulation:main',
             'mujoco_simulation_ros2 = simulation_package.mujoco_simulation_ros2:main',
-            'newton_simulation_ros2 = simulation_package.newton.newton_simulation_ros2:main',
+            'newton_simulation_ros2 = simulation_package.newton_backend.newton_simulation_ros2:main',
             'auto_waypoint_navigator = simulation_package.auto_waypoint_navigator:main',
         ],
     },
