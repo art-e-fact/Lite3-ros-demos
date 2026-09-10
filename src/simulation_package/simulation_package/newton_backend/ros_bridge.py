@@ -3,6 +3,7 @@ import rclpy
 from builtin_interfaces.msg import Time
 from drdds.msg import ImuData, ImuDataValue, JointData, JointsData, JointsDataCmd, JointsDataValue, MetaType
 from geometry_msgs.msg import Pose, PoseArray, Quaternion, TransformStamped
+from sensor_msgs.msg import Imu
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
@@ -30,6 +31,7 @@ class NewtonRosBridge:
         self.tau_ff = np.zeros(self.num_dofs, dtype=np.float32)
 
         self.imu_pub = self.node.create_publisher(ImuData, "/IMU_DATA", 200)
+        self.imu_std_pub = self.node.create_publisher(Imu, "/IMU_SIM", 200) # adding "_SIM" to avoid publishing to the same topic in real robot
         self.joints_pub = self.node.create_publisher(JointsData, "/JOINTS_DATA", 200)
         self.odom_pub = self.node.create_publisher(Odometry, "/odom", 50)
         # The navigation stack runs with use_sim_time, so /clock is the only time source.
@@ -141,6 +143,22 @@ class NewtonRosBridge:
         imu_msg.data.acc_y = float(state.imu_acc[1])
         imu_msg.data.acc_z = float(state.imu_acc[2])
         self.imu_pub.publish(imu_msg)
+
+        imu_std_msg = Imu()
+        imu_std_msg.header.frame_id = '' # matches with /IMU from real M20
+        imu_std_msg.header.stamp = stamp # use this for sim only
+        # imu_std_msg.header.stamp = self.node.get_clock().now().to_msg() # use this for HIL -> TODO: somehow difference between timestamps of lidar vs imu topics causes drifting in localization by on-board SLAM binaries
+        imu_std_msg.orientation = Quaternion(
+            x=float(state.quat_xyzw[0]), y=float(state.quat_xyzw[1]),
+            z=float(state.quat_xyzw[2]), w=float(state.quat_xyzw[3])
+        )
+        imu_std_msg.angular_velocity.x = float(state.imu_gyro[0])
+        imu_std_msg.angular_velocity.y = float(state.imu_gyro[1])
+        imu_std_msg.angular_velocity.z = float(state.imu_gyro[2])
+        imu_std_msg.linear_acceleration.x = float(state.imu_acc[0])
+        imu_std_msg.linear_acceleration.y = float(state.imu_acc[1])
+        imu_std_msg.linear_acceleration.z = float(state.imu_acc[2])
+        self.imu_std_pub.publish(imu_std_msg)
 
         joints_msg = JointsData()
         joints_msg.header = MetaType()
