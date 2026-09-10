@@ -9,6 +9,7 @@ from newton._src.sensors.sensor_tiled_camera import SensorTiledCamera
 from sensor_msgs.msg import PointCloud2
 
 from sensors.common.pointcloud import make_xyz_pointcloud
+from sensors.common.pointcloud import make_robosense_pointcloud
 from sensors.common.transforms import make_transform, quat_from_matrix, sim_time_stamp
 from sensors.newton.geometry import (
     camera_transforms,
@@ -59,10 +60,10 @@ class NewtonRobosenseLidarSensor:
         self.depth_image = self.sensor.utils.create_depth_image_output(self.ray_count, 1)
         self.shape_index_image = self.sensor.utils.create_shape_index_image_output(self.ray_count, 1)
         self.pub = node.create_publisher(PointCloud2, unit.topic, 10)
-        cols = self.ray_count // config.channels
+        self.cols = self.ray_count // config.channels
         node.get_logger().info(
             f"[INFO] Newton RoboSense LiDAR '{unit.frame_id}' initialized "
-            f"({config.channels}x{cols} = {self.ray_count} rays @ {config.frequency_hz} Hz -> {unit.topic})"
+            f"({config.channels}x{self.cols} = {self.ray_count} rays @ {config.frequency_hz} Hz -> {unit.topic})"
         )
 
     def update(self, state, timestamp: float):
@@ -83,7 +84,21 @@ class NewtonRobosenseLidarSensor:
         valid &= filter_self_hits(self.self_shape, shape_indices)
 
         points = (self.local_dirs[valid] * ranges[valid, None]).astype(np.float32)
-        self.pub.publish(make_xyz_pointcloud(points, sim_time_stamp(timestamp), self.frame_id))
+        n = len(points)
+
+        intensity = np.zeros(n, dtype=np.float32)          # [claude] sim has no material reflectance model — 0 is a safe placeholder
+        ring = (np.arange(len(self.local_dirs))[valid] // self.cols).astype(np.uint16)  # [claude] channel index; `cols` from __init__
+
+        frame_dt = 1.0 / self.config.frequency_hz
+        col_index = (np.arange(len(self.local_dirs))[valid] % self.cols).astype(np.float64)
+        point_time = (self.node.get_clock().now().nanoseconds * 1e-9) + col_index / self.cols * frame_dt  # [claude] spinner scan-line deskew offset
+
+        self.pub.publish(
+            make_robosense_pointcloud(points, intensity, ring, point_time, 
+                                      sim_time_stamp(timestamp), # use this in sim only
+                                      #self.node.get_clock().now().to_msg(), # use this for HIL -> TODO: somehow difference between timestamps of lidar vs imu topics causes drifting in localization by on-board SLAM binaries
+                                      self.frame_id)  
+        )
 
     def get_static_transform(self, stamp, parent_frame: str = "base_link"):
         site_pos_local, site_rot = site_local_pose(self.model, self.site_index)
