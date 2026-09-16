@@ -1,14 +1,12 @@
 from pathlib import Path
 import os
-import rerun as rr
 import numpy as np
-import pyarrow as pa
 import pytest
+from artefacts_toolkit_rerun import reader, recorder
 
 from sim_control_harness import SimControlHarness, StopReason
 
-OUTPUT_FOLDER = Path(os.getenv('ARTEFACTS_SCENARIO_UPLOAD_DIR', './test_outputs'))
-OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
+OUTPUT_FOLDER = recorder.get_output_dir()
 
 try:
     from artefacts_toolkit.config import get_artefacts_params
@@ -30,7 +28,7 @@ def follow_distance():
 
 # Set this to a specific path to reuse an existing recording instead of generating a new one each time. 
 # (Useful for development/debugging to avoid long test runtimes, but should be None for CI runs to ensure fresh recordings.)
-USE_RECORDING_PATH = None
+USE_RECORDING_PATH = os.getenv("LITE3_RRD") or None
 # USE_RECORDING_PATH = OUTPUT_FOLDER / "lite3_recording_test.rrd"
 
 
@@ -113,37 +111,24 @@ def recording_path(tmp_path_factory, follow_distance, headless, robot_profile, s
 
 
 @pytest.fixture(scope="module")
-def dataset(recording_path):
+def recording(recording_path):
     assert recording_path.exists(), f"Recording not found at {recording_path}"
-    with rr.server.Server(datasets={"recording": [str(recording_path)]}) as server:
-        yield server.client().get_dataset("recording")
+    return reader.load(recording_path)
 
 
-def query_dataset(dataset, contents, step_ns=20_000_000):
-    df_ranges = dataset.get_index_ranges().to_pandas()
-    row = df_ranges.iloc[0]
-    segment_id = row["rerun_segment_id"]
-
-    start_ns = int(row["sim_time:start"].total_seconds() * 1e9)
-    end_ns = int(row["sim_time:end"].total_seconds() * 1e9)
-
-    times_ns = pa.array(range(start_ns, end_ns + step_ns, step_ns), type=pa.int64())
-
-    return dataset.filter_contents(contents).reader(
-        index="sim_time",
-        using_index_values={segment_id: times_ns},
-        fill_latest_at=True
-    ).to_pandas()
+def query_recording(recording, contents, step_s=0.02):
+    """Entities in `contents` resampled onto a uniform sim_time grid, gaps filled with the latest value."""
+    return reader.to_dataframe(recording, contents, index="sim_time", step=step_s)
 
 
-def test_robot_is_travelling(dataset, robot_profile):
+def test_robot_is_travelling(recording, robot_profile):
     body_col = robot_profile.body_translation_col()
-    df = query_dataset(dataset, [robot_profile.body_path()])
+    df = query_recording(recording, [robot_profile.body_path()])
 
     assert body_col in df.columns, f"Could not find {body_col} in recording"
 
     # Stack the 3D coordinates into a numpy array
-    body_pts = np.vstack([t[0] for t in df[body_col]])
+    body_pts = np.vstack(df[body_col])
 
     # Calculate step-by-step distances in 2D (x, y)
     diffs = np.diff(body_pts[:, :2], axis=0)
@@ -162,17 +147,17 @@ def test_robot_is_travelling(dataset, robot_profile):
     )
 
 
-def test_robot_keeps_max_distance_from_target(dataset, follow_distance, robot_profile):
+def test_robot_keeps_max_distance_from_target(recording, follow_distance, robot_profile):
     body_col = robot_profile.body_translation_col()
-    df = query_dataset(dataset, [robot_profile.body_path(), "/bodies/uwb_tag"])
+    df = query_recording(recording, [robot_profile.body_path(), "/bodies/uwb_tag"])
 
     uwb_col = "/bodies/uwb_tag:Transform3D:translation"
     assert body_col in df.columns, f"Could not find {body_col} in recording"
     assert uwb_col in df.columns, f"Could not find {uwb_col} in recording"
 
     # Stack resampled coordinates directly into numpy arrays (all elements align perfectly!)
-    body_pts = np.vstack([t[0] for t in df[body_col]])
-    uwb_pts = np.vstack([u[0] for u in df[uwb_col]])
+    body_pts = np.vstack(df[body_col])
+    uwb_pts = np.vstack(df[uwb_col])
 
     # Exclude initial uninitialized frames (spawn coordinates)
     valid_mask = (body_pts[:, 0] != 0.0) & (uwb_pts[:, 0] != 0.0)
@@ -183,7 +168,7 @@ def test_robot_keeps_max_distance_from_target(dataset, follow_distance, robot_pr
     distances = np.linalg.norm(body_pts[:, :2] - uwb_pts[:, :2], axis=1)
 
     # Collect time-difference pairs: (sim_time as float seconds, distance as float)
-    time_sec = df.iloc[np.flatnonzero(valid_mask)]["sim_time"].dt.total_seconds().tolist()
+    time_sec = df["sim_time"][valid_mask].tolist()
 
     # Check that maximum distance limit (default 2.5m) was never exceeded
     max_distance_limit = float(artefacts_params.get("max_distance_limit", 2.5))
@@ -222,7 +207,6 @@ def test_robot_keeps_max_distance_from_target(dataset, follow_distance, robot_pr
             yaxis_title="Distance (meters)",
             template="plotly_white"
         )
-        OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
         fig.write_html(OUTPUT_FOLDER / f"distance_to_target_{robot_profile.name}.html")
 
     print(f"Max measured distance from target: {max_measured_distance:.4f} m (limit: {max_distance_limit:.4f} m)")
@@ -231,31 +215,26 @@ def test_robot_keeps_max_distance_from_target(dataset, follow_distance, robot_pr
     )
 
 
-def test_robot_keeps_close_to_rail_center(dataset, robot_profile):
+def test_robot_keeps_close_to_rail_center(recording, robot_profile):
     body_col = robot_profile.body_translation_col()
-    df = query_dataset(dataset, [robot_profile.body_path(), "/network/mission_waypoints"])
+    df = query_recording(recording, [robot_profile.body_path()])
 
     wp_col = "/network/mission_waypoints:Points3D:positions"
     assert body_col in df.columns, f"Could not find {body_col} in recording"
-    assert wp_col in df.columns, f"Could not find {wp_col} in recording"
+    assert wp_col in reader.get_columns(recording), f"Could not find {wp_col} in recording"
 
-    # Extract the static waypoints from the last valid row
-    valid_wp_rows = df[df[wp_col].notna()]
-    if len(valid_wp_rows) == 0:
-        pytest.fail("No waypoints found in `/network/mission_waypoints`")
-
-    wps_raw = valid_wp_rows[wp_col].iloc[-1]
-    track = np.vstack(wps_raw)[:, :2]  # N x 2
+    # The waypoints are logged once (static)
+    track = np.vstack(reader.get_final_message(recording, wp_col))[:, :2]  # N x 2
 
     # Extract robot body positions
-    body_pts = np.vstack([t[0] for t in df[body_col]])
+    body_pts = np.vstack(df[body_col])
 
     # Exclude initial uninitialized frames (spawn coordinates)
     valid_mask = (body_pts[:, 0] != 0.0)
     body_pts = body_pts[valid_mask]
 
     # Collect time-difference pairs: (sim_time as float seconds)
-    time_sec = df.iloc[np.flatnonzero(valid_mask)]["sim_time"].dt.total_seconds().tolist()
+    time_sec = df["sim_time"][valid_mask].tolist()
 
     deviations = []
     for p in body_pts[:, :2]:
@@ -313,7 +292,6 @@ def test_robot_keeps_close_to_rail_center(dataset, robot_profile):
             yaxis_title="Deviation (meters)",
             template="plotly_white"
         )
-        OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
         fig.write_html(OUTPUT_FOLDER / f"deviation_from_rail_{robot_profile.name}.html")
 
     print(f"Max measured deviation from rail center: {max_measured_deviation:.4f} m (limit: {max_deviation_limit:.4f} m)")

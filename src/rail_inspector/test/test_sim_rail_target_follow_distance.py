@@ -1,15 +1,15 @@
-import os
 from pathlib import Path
 
 import pytest
 from artefacts_toolkit.config import get_artefacts_params
+from artefacts_toolkit_rerun import recorder
 
 from sim_control_harness import SimControlHarness, StopReason
 
 
 TEST_TIMEOUT_SEC = 60.0
 
-OUTPUT_FOLDER = Path(os.getenv('ARTEFACTS_SCENARIO_UPLOAD_DIR', './'))
+OUTPUT_FOLDER = recorder.get_output_dir()
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SIM_PACKAGE_ROOT = REPO_ROOT / 'src' / 'simulation_package'
@@ -31,7 +31,6 @@ _LOGIC_LAUNCH_PARAMS = {
 
 def test_robot_travels_minimum_distance(tmp_path, simulator, headless):
 
-    OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
     test_video_path = OUTPUT_FOLDER / f'lite3_{simulator}_rail_target_follow_distance.mp4'
     test_rrd_path = OUTPUT_FOLDER / f'lite3_{simulator}_rail_target_follow_distance.rrd'
     test_config_path = OUTPUT_FOLDER / f'lite3_{simulator}_rail_target_follow_distance.yaml'
