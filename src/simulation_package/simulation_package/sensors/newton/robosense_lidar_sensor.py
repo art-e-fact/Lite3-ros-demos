@@ -95,8 +95,8 @@ class NewtonRobosenseLidarSensor:
 
         self.pub.publish(
             make_robosense_pointcloud(points, intensity, ring, point_time, 
-                                      sim_time_stamp(timestamp), # use this in sim only
-                                      #self.node.get_clock().now().to_msg(), # use this for HIL -> TODO: somehow difference between timestamps of lidar vs imu topics causes drifting in localization by on-board SLAM binaries
+                                    #   sim_time_stamp(timestamp), # use this in sim only
+                                      self.node.get_clock().now().to_msg(), # use this for HIL -> TODO: somehow difference between timestamps of lidar vs imu topics causes drifting in localization by on-board SLAM binaries
                                       self.frame_id)  
         )
 

@@ -146,8 +146,8 @@ class NewtonRosBridge:
 
         imu_std_msg = Imu()
         imu_std_msg.header.frame_id = '' # matches with /IMU from real M20
-        imu_std_msg.header.stamp = stamp # use this for sim only
-        # imu_std_msg.header.stamp = self.node.get_clock().now().to_msg() # use this for HIL -> TODO: somehow difference between timestamps of lidar vs imu topics causes drifting in localization by on-board SLAM binaries
+        # imu_std_msg.header.stamp = stamp # use this for sim only
+        imu_std_msg.header.stamp = self.node.get_clock().now().to_msg() # use this for HIL -> TODO: somehow difference between timestamps of lidar vs imu topics causes drifting in localization by on-board SLAM binaries
         imu_std_msg.orientation = Quaternion(
             x=float(state.quat_xyzw[0]), y=float(state.quat_xyzw[1]),
             z=float(state.quat_xyzw[2]), w=float(state.quat_xyzw[3])
