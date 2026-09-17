@@ -34,6 +34,25 @@ def find_site_index(model, label: str) -> int:
     return _find_label_index(labels, label, "site")
 
 
+def robot_shape_mask(model, site_index: int) -> np.ndarray:
+    """Shapes belonging to the same articulation as the shape at *site_index*.
+    Stops the Lidar from reporting itself (the robot)
+    """
+    labels = [_label_text(value) for value in model.shape_label]
+    prefix = labels[site_index].split("/")[0] + "/"
+    mask = np.array([label.startswith(prefix) for label in labels], dtype=bool)
+    shape_body = model.shape_body.numpy()
+    return mask | (shape_body == shape_body[site_index])
+
+
+def filter_self_hits(self_shape: np.ndarray, shape_indices: np.ndarray) -> np.ndarray:
+    """Per-ray mask that is False for a miss or a hit on the sensor's own robot."""
+    hit = shape_indices < len(self_shape)
+    keep = np.zeros(shape_indices.shape, dtype=bool)
+    keep[hit] = ~self_shape[shape_indices[hit].astype(np.int64)]
+    return keep
+
+
 def find_builder_shape_index(builder, label: str) -> int:
     return _find_label_index(builder.shape_label, label, "shape")
 
