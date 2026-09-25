@@ -1,5 +1,4 @@
 from pathlib import Path
-import os
 import numpy as np
 import pytest
 from artefacts_toolkit.rerun import reader, recorder
@@ -28,7 +27,7 @@ def follow_distance():
 
 # Set this to a specific path to reuse an existing recording instead of generating a new one each time. 
 # (Useful for development/debugging to avoid long test runtimes, but should be None for CI runs to ensure fresh recordings.)
-USE_RECORDING_PATH = os.getenv("LITE3_RRD") or None
+USE_RECORDING_PATH = None
 # USE_RECORDING_PATH = OUTPUT_FOLDER / "lite3_recording_test.rrd"
 
 
