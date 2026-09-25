@@ -47,12 +47,30 @@ pixi run nav-rail-follow-m20
 
 MuJoCo is still available as an explicit alternative; see the [MuJoCo](#mujoco) section below for the `-mujoco` task variants.
 
+### Run the Nav2 route demo
+
+A route recorded in RViz, driven by Nav2 on the Lite3 in a world extruded from
+the route's map, using
+[artefacts-toolkit-navigation](https://github.com/art-e-fact/artefacts-toolkit-navigation).
+See [src/nav2_demo](src/nav2_demo/README.md).
+
+Record a route on a map (RViz opens: **2D Pose Estimate** for the start,
+**Publish Point** for each waypoint, enter to save `routes/lab.yaml`), then
+drive it:
+
+```bash
+pixi run -e nav artefacts-route record --name lab --map src/nav2_demo/maps/depot.yaml
+RVIZ=true pixi run test-nav2-route    # drives the route recorded last; --headless for no windows
+```
+
+
 ### Running tests with pytest
 ```bash
 pixi run test-sim-sensors
 pixi run test-rail-follow
 pixi run test-rerun-recording
 pixi run test-rerun-recording-m20   # M20 with Robosense lidar
+pixi run test-nav2-route            # Nav2 drives a recorded route on the Lite3
 ```
 These run against Newton by default and auto-detect an NVIDIA GPU (via `scripts/sim_pixi_env.sh`), launching the Newton simulator in the `sim-gpu` environment when one is found, or `sim` (CPU Warp) otherwise. Each also has a `-mujoco` variant (e.g. `pixi run test-rerun-recording-mujoco`) that runs the same test against MuJoCo instead, and a `-cpu` variant (e.g. `pixi run test-rerun-recording-cpu`) that forces the CPU `sim` environment even on a GPU machine.
 

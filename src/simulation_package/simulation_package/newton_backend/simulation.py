@@ -163,6 +163,7 @@ class NewtonSimulation:
         profile: RobotProfile | None = None,
         procedural_scene: str | None = None,
         procedural_seed: int = -1,
+        start_pose=None,
     ):
         self.model_path = model_path
         self.scene_path = scene_path
@@ -188,6 +189,9 @@ class NewtonSimulation:
             self.scene = build_newton_procedural_scene(procedural_scene, seed)
             self.scene_meta = self.scene.meta
             self.robot_start_pose = tuple(self.scene.robot_start_pose)
+        if start_pose is not None:
+            # robot.start_pose from the config: fields set there win over the scene's start.
+            self.robot_start_pose = start_pose.apply(self.robot_start_pose)
 
         self.kp_cmd = np.full(self.num_dofs, DEFAULT_STIFFNESS, dtype=np.float32)
         self.kd_cmd = np.full(self.num_dofs, DEFAULT_DAMPING, dtype=np.float32)

@@ -159,6 +159,7 @@ def run_newton(config: SimulationConfig, ros_args: list[str] | None = None):
         profile=profile,
         procedural_scene=config.procedural_scene_name(),
         procedural_seed=config.procedural_env_seed,
+        start_pose=config.robot.start_pose,
     )
     ros.set_scene_meta(sim.scene_meta)
     if viewer is not None:

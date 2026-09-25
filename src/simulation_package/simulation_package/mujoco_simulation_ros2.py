@@ -245,6 +245,9 @@ class MuJoCoSimulationNode(Node):
             else:
                 self.get_logger().info("[INFO] No static scene configured; using the robot model with a generated floor")
 
+        # robot.start_pose from the config: fields set there win over the scene's start.
+        self.scene_start_pose = config.robot.start_pose.apply(tuple(self.scene_start_pose))
+
         self._set_scene_meta(scene_meta)
 
         # Sensor-driven MjSpec mutations (must happen before compile)

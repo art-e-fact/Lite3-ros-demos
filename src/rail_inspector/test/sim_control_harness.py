@@ -223,14 +223,19 @@ class SimControlHarness:
         max_odom_step_m: float = 1.0,
         sim_pixi_env: str | None = None,
         sim_ready_timeout_sec: float = 180.0,
+        sim_extra_args: list[str] | None = None,
     ):
         """Initialise the harness; call ``start()`` or use as a context manager to run it.
 
         The control stack is launched only once the simulator publishes its first
         ``/clock`` message (or after ``sim_ready_timeout_sec``), so the controller never
         starts against a simulator that is still loading or JIT-compiling kernels.
+
+        ``sim_extra_args`` are appended to the simulator command line, for example
+        ``["--set", "robot.start_pose.x=1.0"]`` to override a config field.
         """
         self._sim_config = sim_config
+        self._sim_extra_args = list(sim_extra_args or [])
         self._sim_ready_timeout_sec = sim_ready_timeout_sec
         self._config_path = Path(config_path)
         self._log_dir = Path(log_dir)
@@ -325,6 +330,7 @@ class SimControlHarness:
                 pixi_exe, 'run', '-e', self._sim_pixi_env,
                 sim_python, '-m', 'simulation_package.start_simulation',
                 '--config', str(self._config_path),
+                *self._sim_extra_args,
             ],
             log_path=self._sim_log_path,
             domain_id=self._domain_id,

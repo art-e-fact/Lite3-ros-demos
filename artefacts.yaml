@@ -62,6 +62,25 @@ jobs:
         - name: simulated_sensors_publishing_sensor_data
           run: "pixi run -e sim-test test-sim-sensors"
 
+  test-nav2-route:
+    type: test
+    timeout: 15 # minutes
+    package:
+      docker:
+        build:
+          dockerfile: empty
+    runtime:
+      framework: other
+      simulator: newton
+
+    scenarios:
+      defaults:
+        params:
+          headless: "true"
+      settings:
+        - name: test_route_is_completed
+          run: "pixi run -e nav-test test-nav2-route"
+
   test-rerun-recording:
     type: test
     timeout: 10 # minutes

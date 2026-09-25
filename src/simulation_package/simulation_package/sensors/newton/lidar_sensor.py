@@ -32,7 +32,10 @@ class NewtonLidarSensor:
         builder.shape_type[site_index] = newton.GeoType.CYLINDER
         builder.shape_scale[site_index] = (0.025, 0.01, 0.0)
         builder.shape_color[site_index] = (0.1, 0.1, 0.1)
-        builder.shape_flags[site_index] |= int(newton.ShapeFlags.VISIBLE)
+        # Not VISIBLE: the rays start at this shape's centre and SensorTiledCamera casts
+        # against every rendered shape, so a visible marker is hit by all 360 rays at
+        # 2.5 cm (its own wall) and the scan is all inf.
+        builder.shape_flags[site_index] &= ~int(newton.ShapeFlags.VISIBLE)
 
     def __init__(self, model, node, enabled: bool = False, config: Lidar2DConfig | None = None):
         self.config = config or Lidar2DConfig(enabled=enabled)

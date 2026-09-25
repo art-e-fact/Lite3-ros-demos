@@ -1,0 +1,11 @@
+simulator: newton
+scene: /home/tomo/code/lite3-ros-demos/lab_world.xml
+headless: false
+robot:
+  model: lite3
+sensors:
+  lidar_2d:
+    enabled: true
+    range_max: 12.0
+rerun:
+  enabled: false

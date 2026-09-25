@@ -184,10 +184,34 @@ class RerunConfig:
 
 
 @dataclass
+class StartPoseConfig:
+	"""Where the robot starts, in the scene's frame (metres, yaw in radians).
+
+	A field left unset keeps the scene's own start: procedural scenes place the
+	robot themselves, static scenes start it at the origin. Set from a config
+	file (robot: {start_pose: {x: 1.0, y: -0.5, yaw: 1.57}}) or on the command
+	line (--set robot.start_pose.x=1.0), e.g. from a recorded route's start.
+	"""
+	x: float | None = None
+	y: float | None = None
+	yaw: float | None = None
+
+	def apply(self, pose: tuple[float, float, float]) -> tuple[float, float, float]:
+		"""``pose`` with the fields that are set here replaced."""
+		x, y, yaw = pose
+		return (
+			x if self.x is None else float(self.x),
+			y if self.y is None else float(self.y),
+			yaw if self.yaw is None else float(self.yaw),
+		)
+
+
+@dataclass
 class RobotConfig:
 	model: str = "lite3"
 	robot_description: str = DEFAULT_ROBOT_DESCRIPTION_URI
 	state_frequency_hz: float = 50.0
+	start_pose: StartPoseConfig = field(default_factory=StartPoseConfig)
 
 	def preset(self) -> dict[str, str | float]:
 		key = self.model.strip().lower()
@@ -282,6 +306,10 @@ class SimulationConfig:
 			errors.append(f"robot_description does not exist: {robot_path}")
 
 		_validate_positive(errors, "robot.state_frequency_hz", self.robot.state_frequency_hz)
+		for axis in ("x", "y", "yaw"):
+			value = getattr(self.robot.start_pose, axis)
+			if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))):
+				errors.append(f"robot.start_pose.{axis} must be a number")
 
 		sensors = self.sensors
 		if sensors.realsense.enable_pointcloud and not sensors.realsense.enable_depth:

@@ -138,6 +138,16 @@ env = { SIM_PIXI_ENV = "sim" }
 
 # Newton tasks pick sim-gpu when scripts/sim_pixi_env.sh detects an NVIDIA GPU, else sim;
 # -cpu variants force the CPU Warp build; MuJoCo tasks always run in sim.
+[tasks.test-nav2-route]
+cmd = "pytest src/nav2_demo/test/test_route.py -vv -s"
+default-environment = "nav-test"
+depends-on = ["build"]
+
+[tasks.test-nav2-route-mujoco]
+cmd = "pytest src/nav2_demo/test/test_route.py --simulator mujoco -vv -s"
+default-environment = "nav-test"
+depends-on = ["build"]
+
 [tasks.sim-rail-follow]
 cmd = "pixi run -e $(scripts/sim_pixi_env.sh) python -m simulation_package.start_simulation --config src/simulation_package/config/newton_procedural_railroad.yaml"
 default-environment = "default"
@@ -368,6 +378,18 @@ sysroot_linux-aarch64 = ">=2.17,<3"
 ros-jazzy-pcl-conversions = ">=2.6.2,<3"
 ros-jazzy-rosbag2 = ">=0.26.9,<0.27"
 textual = ">=8.2.7,<9"
+ros-jazzy-nav2-bringup = ">=1.3.12,<2"
+ros-jazzy-nav2-simple-commander = ">=1.3.12,<2"
+# Nav2 pulls in blas-devel, which let the solver switch the BLAS backend (to BLIS on
+# linux-64 and NVPL on linux-aarch64, the robot). Keep OpenBLAS, as before Nav2.
+libblas = { version = "*", build = "*openblas*" }
+libcblas = { version = "*", build = "*openblas*" }
+liblapack = { version = "*", build = "*openblas*" }
+
+[feature.nav.pypi-dependencies]
+# Route loading, world extrusion and Nav2 route driving (nav2_demo). A sibling
+# checkout until the version with map_to_world() is on PyPI.
+artefacts-toolkit-navigation = { path = "../artefacts-toolkit-navigation", editable = true }
 
 [feature.test.pypi-dependencies]
 artefacts-toolkit = ">=1.0.0, <2"
