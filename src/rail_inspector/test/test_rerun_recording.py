@@ -111,19 +111,19 @@ def recording_path(tmp_path_factory, follow_distance, headless, robot_profile, s
 
 
 @pytest.fixture(scope="module")
-def recording(recording_path):
+def dataset(recording_path):
     assert recording_path.exists(), f"Recording not found at {recording_path}"
     return reader.load(recording_path)
 
 
-def query_recording(recording, contents, step_s=0.02):
+def query_dataset(dataset, contents, step_s=0.02):
     """Entities in `contents` resampled onto a uniform sim_time grid, gaps filled with the latest value."""
-    return reader.to_dataframe(recording, contents, index="sim_time", step=step_s)
+    return reader.to_dataframe(dataset, contents, index="sim_time", step=step_s)
 
 
-def test_robot_is_travelling(recording, robot_profile):
+def test_robot_is_travelling(dataset, robot_profile):
     body_col = robot_profile.body_translation_col()
-    df = query_recording(recording, [robot_profile.body_path()])
+    df = query_dataset(dataset, [robot_profile.body_path()])
 
     assert body_col in df.columns, f"Could not find {body_col} in recording"
 
@@ -147,9 +147,9 @@ def test_robot_is_travelling(recording, robot_profile):
     )
 
 
-def test_robot_keeps_max_distance_from_target(recording, follow_distance, robot_profile):
+def test_robot_keeps_max_distance_from_target(dataset, follow_distance, robot_profile):
     body_col = robot_profile.body_translation_col()
-    df = query_recording(recording, [robot_profile.body_path(), "/bodies/uwb_tag"])
+    df = query_dataset(dataset, [robot_profile.body_path(), "/bodies/uwb_tag"])
 
     uwb_col = "/bodies/uwb_tag:Transform3D:translation"
     assert body_col in df.columns, f"Could not find {body_col} in recording"
@@ -215,16 +215,16 @@ def test_robot_keeps_max_distance_from_target(recording, follow_distance, robot_
     )
 
 
-def test_robot_keeps_close_to_rail_center(recording, robot_profile):
+def test_robot_keeps_close_to_rail_center(dataset, robot_profile):
     body_col = robot_profile.body_translation_col()
-    df = query_recording(recording, [robot_profile.body_path()])
+    df = query_dataset(dataset, [robot_profile.body_path()])
 
     wp_col = "/network/mission_waypoints:Points3D:positions"
     assert body_col in df.columns, f"Could not find {body_col} in recording"
-    assert wp_col in reader.get_columns(recording), f"Could not find {wp_col} in recording"
+    assert wp_col in reader.get_columns(dataset), f"Could not find {wp_col} in recording"
 
     # The waypoints are logged once (static)
-    track = np.vstack(reader.get_final_message(recording, wp_col))[:, :2]  # N x 2
+    track = np.vstack(reader.get_final_message(dataset, wp_col))[:, :2]  # N x 2
 
     # Extract robot body positions
     body_pts = np.vstack(df[body_col])
