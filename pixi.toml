@@ -319,7 +319,7 @@ warp-lang = { version = ">=1.17.0,<2", build = "cuda*" }
 
 [feature.rerun.pypi-dependencies]
 rerun-loader-mjcf = ">=1.0.1, <2"
-rerun-sdk = { version = ">=0.33.0, <0.34", extras = ["catalog"] }
+rerun-sdk = { version = ">=0.37.0, <0.38", extras = ["catalog"] }
 
 [feature.nav]
 channels = [
@@ -370,7 +370,7 @@ ros-jazzy-rosbag2 = ">=0.26.9,<0.27"
 textual = ">=8.2.7,<9"
 
 [feature.test.pypi-dependencies]
-artefacts-toolkit = ">=1.0.0, <2"
+artefacts-toolkit = ">=1.1.0, <2"
 
 [feature.test.dependencies]
 pytest = ">=9.0.3,<10"

@@ -2,7 +2,7 @@ from pathlib import Path
 import os
 import numpy as np
 import pytest
-from artefacts_toolkit_rerun import reader, recorder
+from artefacts_toolkit.rerun import reader, recorder
 
 from sim_control_harness import SimControlHarness, StopReason
 

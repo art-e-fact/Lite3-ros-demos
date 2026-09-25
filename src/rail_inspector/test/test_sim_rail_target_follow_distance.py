@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 from artefacts_toolkit.config import get_artefacts_params
-from artefacts_toolkit_rerun import recorder
+from artefacts_toolkit.rerun import recorder
 
 from sim_control_harness import SimControlHarness, StopReason
 
