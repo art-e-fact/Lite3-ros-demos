@@ -55,11 +55,11 @@ the route's map, using
 See [src/nav2_demo](src/nav2_demo/README.md).
 
 Record a route on a map (RViz opens: **2D Pose Estimate** for the start,
-**Publish Point** for each waypoint, enter to save `routes/lab.yaml`), then
+**Publish Point** for each waypoint, enter to save it under `routes/`), then
 drive it:
 
 ```bash
-pixi run -e nav artefacts-route record --name lab --map src/nav2_demo/maps/depot.yaml
+pixi run -e nav artefacts-route record --map src/nav2_demo/maps/depot.yaml
 RVIZ=true pixi run test-nav2-route    # drives the route recorded last; --headless for no windows
 ```
 

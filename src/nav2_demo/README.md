@@ -33,12 +33,13 @@ The test drives the route recorded last (`artefacts-route record` saves into
 From the repository root, on one of the maps here (or your own):
 
 ```bash
-pixi run -e nav artefacts-route record --name lab --map src/nav2_demo/maps/depot.yaml
+pixi run -e nav artefacts-route record --map src/nav2_demo/maps/depot.yaml
 ```
 
 This opens RViz with the map. Click **2D Pose Estimate** where the robot
 should start, then **Publish Point** for each waypoint in order; press enter
-in the terminal (or close RViz) to save `routes/lab.yaml`. Keep the points on
+in the terminal (or close RViz) to save it as `routes/<date>_<time>.yaml`
+(`record routes/lab.yaml ...` to name it yourself). Keep the points on
 open floor: the Lite3 is 0.56 x 0.30 m and walks at 0.3 m/s. Then
 `pixi run test-nav2-route`.
 
