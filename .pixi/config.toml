@@ -1,0 +1,7 @@
+# prefix.dev/conda-forge is unusually slow on some networks.
+# conda.anaconda.org served the same packages much faster.
+[mirrors]
+"https://prefix.dev/conda-forge" = [
+    "https://conda.anaconda.org/conda-forge",
+    "https://prefix.dev/conda-forge",
+]

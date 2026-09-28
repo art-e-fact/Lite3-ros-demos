@@ -34,7 +34,7 @@ from sensors.common.camera import (
 )
 from sensors.common.pointcloud import make_structured_xyz_pointcloud
 from sensors.common.resources import D435I_XML_PATH
-from sensors.common.transforms import CAMERA_LINK_FROM_TILED_CAMERA, OPTICAL_QUAT_XYZW, make_transform, quat_from_matrix
+from sensors.common.transforms import CAMERA_LINK_FROM_TILED_CAMERA, OPTICAL_QUAT_XYZW, make_transform, quat_from_matrix, sim_time_stamp
 from sensors.newton.geometry import (
     builder_shape_local_pose,
     camera_transforms,
@@ -192,7 +192,7 @@ class NewtonDepthSensor:
         if not self.enabled:
             return
 
-        stamp = self.node.get_clock().now().to_msg()
+        stamp = sim_time_stamp(timestamp)
         site_pos, site_rot, _ = site_world_pose(self.model, state, self.site_index)
         site_pos = site_pos + site_rot @ D435I_FORWARD_OFFSET_VEC
         tiled_rot = site_rot @ CAMERA_LINK_FROM_TILED_CAMERA

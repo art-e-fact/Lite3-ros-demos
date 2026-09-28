@@ -59,7 +59,7 @@
                       quat="1 0 0 0"
                       mass="15.882" diaginertia="0.087919 0.533522 0.563492"/>
 
-            <site name="imu_site" pos="0.0632 -0.0268 0.0435" size="0.005" rgba="1 0 0 1"/>
+            <site name="imu_site" pos="0.0632 -0.0268 -0.0435" size="0.005" rgba="1 0 0 1"/>
             <site name="base_site" pos="0 0 0" quat="1 0 0 0"/>
             <site name="mid360_mount" pos="0.3 0 0.12" quat="0.9816272 0 0.190809 0" size="0.001 0.001 0.001"/>
             <!-- Dual RoboSense 96-line LiDARs. Positions from the Lynx M20 hardware

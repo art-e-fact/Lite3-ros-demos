@@ -11,7 +11,7 @@ import yaml
 CURRENT_DIR = Path(__file__).resolve().parent
 if str(CURRENT_DIR) not in sys.path:
     sys.path.insert(0, str(CURRENT_DIR))
-NEWTON_DIR = CURRENT_DIR / "newton"
+NEWTON_DIR = CURRENT_DIR / "newton_backend"
 if str(NEWTON_DIR) not in sys.path:
     sys.path.insert(0, str(NEWTON_DIR))
 
