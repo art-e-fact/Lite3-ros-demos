@@ -5,10 +5,8 @@ route's map. Uses
 [artefacts-toolkit-navigation](https://github.com/art-e-fact/artefacts-toolkit-navigation):
 
 - `artefacts-route record` records a route by clicking in RViz on a map.
-  `routes/sandbox.yaml` was recorded that way on Nav2's TurtleBot3 sandbox
-  map; `routes/depot.yaml`, the default here, was written by hand on Nav2's
-  depot map (the sandbox's 1.1 m pillar grid is a tight fit for a 0.56 m
-  quadruped; the depot has an open floor).
+  `routes/depot.yaml`, the default here, was recorded that way on Nav2's
+  depot map.
 - `map_to_world()` raises the map's occupied cells into walls, giving a
   simulator world at the map's coordinates (`format="mjcf"` for this
   simulator). It takes milliseconds, so the test makes it fresh each run.
@@ -22,7 +20,7 @@ pixi run test-nav2-route --headless  # Newton (GPU if there is one), no windows
 pixi run test-nav2-route             # with the Newton viewer
 RVIZ=true pixi run test-nav2-route   # ... and Nav2's RViz view (map, costmaps, path, robot)
 pixi run test-nav2-route-mujoco      # the same on MuJoCo
-ROUTE=src/nav2_demo/routes/sandbox.yaml pixi run test-nav2-route   # a particular route
+ROUTE=routes/lab.yaml pixi run test-nav2-route   # a particular route
 ```
 
 The test drives the route recorded last (`artefacts-route record` saves into

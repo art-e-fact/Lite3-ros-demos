@@ -1,0 +1,13 @@
+format_version: 1
+name: depot
+recorded_at: '2026-09-28T03:13:14+00:00'
+ros_distro: jazzy
+frame_id: map
+map:
+  file: src/nav2_demo/maps/depot.yaml
+  sha256: 8cd5c8d2cbeaf406d6d5312958cd70b64764726e4acd08ec57b9b5348f2a4544
+initial_pose: {x: 14.7053, y: -6.3133, yaw: 3.1416}
+waypoints:
+  - {x: 5.4735, y: -6.0652, yaw: 1.6673}
+  - {x: 4.8567, y: 0.3084, yaw: -2.9371}
+  - {x: 0.6424, y: -0.5654, yaw: -2.9371}

@@ -13,7 +13,7 @@ setup(
         ('share/' + package_name + '/launch', ['launch/nav2_route.launch.py']),
         ('share/' + package_name + '/config', ['config/nav2_lite3.yaml']),
         ('share/' + package_name + '/maps', ['maps/depot.yaml', 'maps/depot.pgm', 'maps/sandbox.yaml', 'maps/sandbox.pgm']),
-        ('share/' + package_name + '/routes', ['routes/depot.yaml', 'routes/sandbox.yaml']),
+        ('share/' + package_name + '/routes', ['routes/depot.yaml']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
